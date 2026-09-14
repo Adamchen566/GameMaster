@@ -9,6 +9,7 @@ htmlcov/
 
 # JavaScript
 node_modules/
+.pnpm-store/
 dist/
 coverage/
 playwright-report/
@@ -28,4 +29,3 @@ Thumbs.db
 # Runtime data
 *.log
 postgres-data/
-
