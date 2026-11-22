@@ -37,3 +37,7 @@ postgres-data/
 
 # Evaluation output
 eval-out/
+
+# Local game records (the default SQLite database and exports)
+apps/api/data/
+apps/api/records/

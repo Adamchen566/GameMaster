@@ -43,6 +43,9 @@ class Driver:
     """Why it cannot be used: a short code the client turns into a sentence."""
     check: Callable[[], str | None] | None = None
     """A slower check made when someone asks, e.g. whether a local client is logged in."""
+    metered: bool = True
+    """Paid per token, so the per-game token ceiling applies. A local client runs on the
+    person's subscription instead: its turns are counted but never cut off."""
 
     @property
     def available(self) -> bool:
@@ -137,7 +140,12 @@ def build_drivers(
         else:
             local = ClaudeCodeModel(executable, model=settings.claude_code_model)
             drivers["claude_code"] = Driver(
-                "claude_code", LABELS["claude_code"], local, timeout, check=local.problem
+                "claude_code",
+                LABELS["claude_code"],
+                local,
+                timeout,
+                check=local.problem,
+                metered=False,
             )
 
     timeout = settings.codex_timeout_seconds
@@ -151,7 +159,9 @@ def build_drivers(
             drivers["codex"] = off("codex", "codex_not_installed", timeout)
         else:
             codex = codex_model.CodexModel(executable, model=settings.codex_model)
-            drivers["codex"] = Driver("codex", LABELS["codex"], codex, timeout, check=codex.problem)
+            drivers["codex"] = Driver(
+                "codex", LABELS["codex"], codex, timeout, check=codex.problem, metered=False
+            )
 
     return drivers
 

@@ -205,7 +205,9 @@
 - [x] 浏览器朗读、投票连线。
 - [ ] 用真实的 DeepSeek 密钥打一局。（需要本人提供 `DEEPSEEK_API_KEY`，会产生费用。）
 - [ ] 用本机 Claude Code 打一局。（不要密钥，会用本人的订阅额度，要先确认。）
-- [x] 用本机 Codex 真实打通：单次决定和一整局，见 PR 说明。
+- [x] 用本机 Codex 真实打通一整局，完整记录在 [`evidence/games/codex-spectated-5p.json`](evidence/games/codex-spectated-5p.json)。
+- [x] 每局完整保存（默认 SQLite 文件），每个模型回合的输入、回答、耗时都记下；可导出成 JSON。
+- [ ] 回放界面。（本人说后面会要求。）
 
 ### v1.0 作品集
 

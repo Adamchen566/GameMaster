@@ -12,7 +12,7 @@ import json
 import random
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 from app.agents.contract import (
     DECISION_SCHEMA,
@@ -109,6 +109,12 @@ class AgentTurn:
     """The player's new private note, when the model produced one."""
     inner: str | None = None
     """What the model said it really thinks, when it said so."""
+    observation: Mapping[str, Any] | None = None
+    """Exactly what the model was sent."""
+    exchanges: tuple[Mapping[str, Any], ...] = ()
+    """One entry per model call: its answer, why it was turned down, or the error."""
+    input_tokens: int = 0
+    output_tokens: int = 0
 
 
 class LlmPlayer:
@@ -143,6 +149,8 @@ class LlmPlayer:
         question = json.dumps(observation.data, ensure_ascii=False, sort_keys=True)
         feedback: str | None = None
         attempts = 0
+        exchanges: list[dict[str, Any]] = []
+        tokens = [0, 0]
         system = self._system
         if persona:
             system += (
@@ -157,6 +165,10 @@ class LlmPlayer:
                 fallback_reason=reason,
                 attempts=attempts,
                 note=None,
+                observation=observation.data,
+                exchanges=tuple(exchanges),
+                input_tokens=tokens[0],
+                output_tokens=tokens[1],
             )
 
         while attempts < MAX_ATTEMPTS:
@@ -173,20 +185,29 @@ class LlmPlayer:
                     timeout_seconds=self._timeout_seconds,
                 )
             except ModelTimeout:
+                exchanges.append({"error": "timeout"})
                 return fall_back("timeout")
-            except ModelUnavailable:
+            except ModelUnavailable as error:
+                exchanges.append({"error": "unavailable", "detail": str(error)[:200]})
                 return fall_back("unavailable")
             except ModelRefused:
+                exchanges.append({"error": "refused"})
                 return fall_back("refused")
             except ModelBadOutput as error:
+                exchanges.append({"error": "bad_output", "detail": str(error)[:200]})
                 feedback = _retry_feedback(str(error))
                 continue
 
             self._budget.charge(view.game_id, reply)
+            tokens[0] += reply.input_tokens
+            tokens[1] += reply.output_tokens
+            exchange: dict[str, Any] = {"answer": dict(reply.data)}
+            exchanges.append(exchange)
             try:
                 decision: AgentDecision = decision_from_data(reply.data)
                 action = to_action(view, decision)
             except InvalidDecision as error:
+                exchange["rejected"] = str(error)
                 feedback = _retry_feedback(str(error))
                 continue
 
@@ -197,6 +218,10 @@ class LlmPlayer:
                 attempts=attempts,
                 note=decision.note,
                 inner=decision.inner or None,
+                observation=observation.data,
+                exchanges=tuple(exchanges),
+                input_tokens=tokens[0],
+                output_tokens=tokens[1],
             )
 
         return fall_back("invalid_output")

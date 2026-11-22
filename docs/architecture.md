@@ -332,6 +332,8 @@ PlayerView ──build_observation──> 观察(JSON) ──> ModelClient ─�
 
 | 环境变量 | 默认 | 说明 |
 | --- | --- | --- |
+| `DATABASE_URL` | `sqlite:///data/avalon.db` | 对局存在哪；`memory` 只放内存 |
+| `AUTO_MIGRATE` | `true` | 启动时把数据库结构升到最新（SQLite 文件和目录不存在时会创建） |
 | `LLM_DRIVERS` | `auto` | 提供哪些模型来源：`auto`（配好哪个就开哪个）、`none`，或 `claude,deepseek,claude_code,codex` 的组合 |
 | `ANTHROPIC_API_KEY` | — | 开启 Claude 席位 |
 | `LLM_PROVIDER` | `none` | 旧开关：设为 `anthropic` 也开启 Claude（密钥由 SDK 自己找） |
@@ -475,3 +477,18 @@ AI 主持只用 API 驱动：本机客户端一步要十几秒以上，赶不上
 | --- | --- |
 | 朗读 | 浏览器自带的 `speechSynthesis`，不要密钥、不联网；每个角色的音高和语速来自人设；打开后每句发言的停留时间按念完所需拉长 |
 | 投票连线 | 亮票那一拍，从每个座位到桌子中间画一条线，赞成绿色、反对红色 |
+
+### 8.6 完整记录，留给回放
+
+本人要求“完整保留记录，后面要求回放”。所以每一局默认存进本机的 SQLite 文件，并且多记一样东西：
+
+| 存什么 | 在哪 | 作用 |
+| --- | --- | --- |
+| 所有事件（发牌、每张选票、每张任务牌） | `game_events` | 按顺序重放就能还原任意时刻的局面 |
+| 座位：名字、谁来打、用哪个模型、人设 | `room_players` | |
+| 心声 | `agent_thoughts` | |
+| 每个模型回合 | `agent_turns`（新增） | 模型看到的完整输入、每一次回答（包括被规则拒绝的那次和拒绝原因、报错）、用了哪个模型、耗时、token |
+
+`python -m app.records <game_id>` 把这些合成一个 JSON 文件（格式 `avalon-game-record/1`），里面有全部秘密，只适合结束后的对局。有测试检查：按导出的事件重放，得到的终局和数据库里的一样。
+
+回放界面还没做；数据已经够用，之后可以直接读这个文件或数据库。

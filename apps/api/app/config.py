@@ -12,11 +12,14 @@ class Settings(BaseSettings):
     # A local, git-ignored `.env` next to the app is the easiest place for keys.
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    database_url: str | None = None
+    database_url: str = "sqlite:///data/avalon.db"
     """SQLAlchemy URL, e.g. `postgresql+psycopg://user:password@host:5432/avalon`.
 
-    Unset means games live in memory and are lost when the process stops.
+    The default keeps every game in a SQLite file under `data/`, so a game can be
+    exported and replayed later. "memory" keeps games in memory only.
     """
+    auto_migrate: bool = True
+    """Bring the database schema up to date when the API starts."""
 
     llm_provider: Literal["none", "anthropic"] = "none"
     """Set to "anthropic" to allow model-driven seats and the AI game master.

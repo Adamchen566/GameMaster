@@ -27,6 +27,7 @@ def test_migrated_database_has_exactly_the_expected_tables(database: Database) -
         "room_players",
         "agent_states",
         "agent_thoughts",
+        "agent_turns",
         "alembic_version",
     }
 

@@ -424,3 +424,25 @@ def test_seats_spectator_and_thoughts_survive_a_restart(backend: str, tmp_path: 
     after = second.snapshot(session)
     assert after.view.phase is Phase.FINISHED
     assert after.thoughts == before.thoughts != ()
+
+
+def test_the_token_ceiling_holds_back_a_paid_api_but_never_a_local_client() -> None:
+    """A local client runs on the person's subscription; the ceiling guards paid calls only."""
+    drivers = {
+        "deepseek": Driver("deepseek", "DeepSeek", NamedModel("deepseek"), 5.0),
+        "codex": Driver("codex", "Codex", NamedModel("codex"), 5.0, metered=False),
+    }
+    # Each model turn costs 110 tokens: the ceiling is spent after the first one.
+    game = GameService(
+        drivers=drivers, budget=TokenBudget(100), executor=InlineExecutor(), new_seed=lambda: 7
+    )
+    created = game.create_room(
+        "Adam", 5, seats=["deepseek", "codex", "bot", "bot", "bot"], spectate=True
+    )
+    start(game, created)
+
+    turns = game.turns(created.session.room.game_id)
+    paid = [turn for turn in turns if turn.driver == "deepseek"]
+    local = [turn for turn in turns if turn.driver == "codex"]
+    assert any(turn.fallback_reason == "budget_exhausted" for turn in paid)
+    assert local and all(turn.source == "model" for turn in local)

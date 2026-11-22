@@ -24,12 +24,13 @@ from typing import Protocol
 from uuid import uuid4
 
 from app.agents.drivers import Driver, default_driver
-from app.agents.llm_player import LlmPlayer, Style
+from app.agents.llm_player import AgentTurn, LlmPlayer, Style
 from app.agents.model import TokenBudget, Usage
 from app.agents.personas import BOT_NAMES, persona_for
 from app.agents.state import AgentState, AgentStateStore, InMemoryAgentStateStore
 from app.agents.table_bot import choose_action, inner_thought
 from app.agents.thoughts import InMemoryThoughtStore, Thought, ThoughtStore, clean_thought
+from app.agents.turns import InMemoryTurnStore, TurnRecord, TurnStore
 from app.game.actions import Action, StartGame
 from app.game.engine import apply_action, new_game
 from app.game.errors import ErrorCode, RuleViolation
@@ -59,6 +60,8 @@ THOUGHTFUL = ("propose_team", "speak", "assassinate")
 """The turns a built-in bot leaves a thought for. A thought per ballot would be noise."""
 ANNOUNCEMENT_LIMIT = 12
 """How many of the most recent public events a client is shown."""
+UNMETERED_TOKENS = 10**15
+"""The ceiling for local clients: a number no game reaches."""
 MAX_AI_TURNS_PER_RUN = 500
 """A whole game is ~100 events; this only stops a bug from spinning forever."""
 
@@ -149,6 +152,7 @@ class GameService:
         llm_players: Mapping[str, LlmPlayer] | None = None,
         drivers: Mapping[str, Driver] | None = None,
         thoughts: ThoughtStore | None = None,
+        turns: TurnStore | None = None,
         narrator: Narrator | None = None,
         budget: TokenBudget | None = None,
         executor: Executor | None = None,
@@ -167,8 +171,11 @@ class GameService:
         # Players bound to one driver's model, made when a seat first needs one.
         self._driver_players: dict[tuple[str, str], LlmPlayer] = {}
         self._thoughts: ThoughtStore = thoughts if thoughts is not None else InMemoryThoughtStore()
+        self._turns: TurnStore = turns if turns is not None else InMemoryTurnStore()
         self._narrator = narrator if narrator is not None else Narrator()
         self._budget = budget if budget is not None or not drivers else TokenBudget(300_000)
+        # Local clients run on the person's subscription: counted, never cut off.
+        self._unmetered = TokenBudget(UNMETERED_TOKENS)
         self._executor: Executor = executor if executor is not None else _ThreadExecutor()
         # Serialises writers inside this process. Across processes the repository's
         # version check decides who wins. Never held while a model is being called.
@@ -191,6 +198,10 @@ class GameService:
     def drivers(self) -> Mapping[str, Driver]:
         """Every way of reaching a model this server knows, usable or not."""
         return self._drivers
+
+    def turns(self, game_id: str) -> tuple[TurnRecord, ...]:
+        """Every model turn of the game, for review. Holds secrets: not for players."""
+        return self._turns.for_game(game_id)
 
     # --- Rooms -----------------------------------------------------------------
 
@@ -448,7 +459,7 @@ class GameService:
         view = build_player_view(state, seat.player_id)
         # The slow part. No lock is held, so people can keep acting meanwhile.
         started = time.perf_counter()
-        action, after, thought = self._decide(room, seat, view, history, before)
+        action, after, thought, turn = self._decide(room, seat, view, history, before)
         decided_ms = round((time.perf_counter() - started) * 1000, 1)
 
         with self._lock, self._transaction():
@@ -469,6 +480,9 @@ class GameService:
                 self._agent_states.put(game_id, seat.player_id, after)
             if thought:
                 self._thoughts.add(game_id, (Thought(fresh.version + 1, seat.player_id, thought),))
+            if _agent(seat) == "llm" and after is not None:
+                record = _turn_record(fresh.version + 1, seat, after, turn, decided_ms)
+                self._turns.add(game_id, record)
 
         log.info(
             "ai_turn",
@@ -493,7 +507,7 @@ class GameService:
         view: PlayerView,
         history: Sequence[PublicEntry],
         before: AgentState,
-    ) -> tuple[Action, AgentState | None, str]:
+    ) -> tuple[Action, AgentState | None, str, AgentTurn | None]:
         """The seat's action, its new private state (model seats) and what it thought."""
         rng = _rng(room, view)
         bot = choose_action(
@@ -505,7 +519,7 @@ class GameService:
             salt=str(room.seed),
         )
         if _agent(seat) != "llm":
-            return bot, None, _bot_thought(room, view, history)
+            return bot, None, _bot_thought(room, view, history), None
 
         player = self._player_for(seat)
         if player is None:
@@ -513,7 +527,7 @@ class GameService:
             unavailable = replace(
                 before, last_source="fallback", last_fallback_reason="unavailable"
             )
-            return bot, unavailable, _bot_thought(room, view, history)
+            return bot, unavailable, _bot_thought(room, view, history), None
 
         persona = persona_for(seat.name)
         turn = player.take_turn(
@@ -530,7 +544,7 @@ class GameService:
             last_source=turn.source,
             last_fallback_reason=turn.fallback_reason,
         )
-        return turn.action, after, clean_thought(turn.inner or "")
+        return turn.action, after, clean_thought(turn.inner or ""), turn
 
     def _player_for(self, seat: Seat) -> LlmPlayer | None:
         """The model player for this seat, or None when its model cannot be reached."""
@@ -542,12 +556,15 @@ class GameService:
         if seat.driver is None:
             return self._llm_players.get(style)
         driver = self._drivers.get(seat.driver)
-        if driver is None or driver.model is None or self._budget is None:
+        if driver is None or driver.model is None:
+            return None
+        budget = self._budget if driver.metered else self._unmetered
+        if budget is None:
             return None
         key = (driver.id, style)
         if key not in self._driver_players:
             self._driver_players[key] = LlmPlayer(
-                driver.model, self._budget, style=style, timeout_seconds=driver.timeout_seconds
+                driver.model, budget, style=style, timeout_seconds=driver.timeout_seconds
             )
         return self._driver_players[key]
 
@@ -572,6 +589,25 @@ def _log_events(
 def _narrated(entries: Sequence[PublicEntry]) -> tuple[PublicEntry, ...]:
     """The game master announces what happened, not what people said."""
     return tuple(entry for entry in entries if entry.kind != "speech")
+
+
+def _turn_record(
+    version: int, seat: Seat, after: AgentState, turn: AgentTurn | None, duration_ms: float
+) -> TurnRecord:
+    """What to keep of one model-driven turn. `turn` is None when no model could be asked."""
+    return TurnRecord(
+        version=version,
+        player_id=seat.player_id,
+        driver=seat.driver or "default",
+        source=after.last_source or "fallback",
+        fallback_reason=after.last_fallback_reason,
+        attempts=turn.attempts if turn is not None else 0,
+        duration_ms=duration_ms,
+        input_tokens=turn.input_tokens if turn is not None else 0,
+        output_tokens=turn.output_tokens if turn is not None else 0,
+        observation=turn.observation if turn is not None else None,
+        exchanges=turn.exchanges if turn is not None else (),
+    )
 
 
 def _view_of(session: Session, state: GameState) -> PlayerView:

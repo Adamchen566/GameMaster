@@ -32,14 +32,15 @@ corepack pnpm test
 corepack pnpm dev
 ```
 
-这样启动的后端把对局放在内存里，重启即丢。想在本机不装数据库也能保留对局，启动前设置 `DATABASE_URL` 并建表（PostgreSQL 的写法见 [`docs/database.md`](docs/database.md)）：
+每一局都会完整保存在 `apps/api/data/avalon.db`（SQLite，启动时自动建表，已被 git 忽略），重启后端不会丢。保存的内容足够以后回放：所有事件（含发牌、每张选票和任务牌）、公开记录、每个 AI 的心声，以及每个模型回合看到了什么、回答了什么、用了多久。导出某一局：
 
 ```powershell
 cd apps/api
-$env:DATABASE_URL = "sqlite:///./avalon.db"
-.\.venv\Scripts\python.exe -m alembic upgrade head
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
+.\.venv\Scripts\python.exe -m app.records            # 列出所有对局
+.\.venv\Scripts\python.exe -m app.records <game_id>  # 写到 records/<game_id>.json
 ```
+
+想换成 PostgreSQL 就设置 `DATABASE_URL`（写法见 [`docs/database.md`](docs/database.md)）；设成 `memory` 则只放在内存里，重启即丢。
 
 想让 AI 上桌，每个座位可以单独选由谁来打。三种来源，配好哪个，大厅里就能选哪个：
 
