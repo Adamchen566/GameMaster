@@ -37,7 +37,7 @@
 | 版本 | 交付 | 对应原 Task | 工时 target | AI 等级 |
 | --- | --- | --- | --- | --- |
 | v0.1 骨架收尾 | 合并前端、清理、compose、`.env.example`、CI | 1 | 6–8h | L3 |
-| v0.2 规则引擎 | 5–10 人 `RuleSet`、状态机、属性测试 | 2 | 35–50h | L0 为主，L2 查漏 |
+| v0.2 规则引擎 | 5–10 人 `RuleSet`、状态机、属性测试 | 2 | 35–50h | L4，本人逐文件 review |
 | v0.3 单人可玩 | 隐私视图 + 随机合法 bot + 内存仓库 + HTTP API + 最小界面 | 4、10 前半、5 精简 | 45–60h | L0 reducer 和一个 endpoint，其余 L3 |
 | v0.4 持久化 | PostgreSQL 事件日志、乐观并发、回放 | 3 | 30–45h | L0 SQL，L1 事务 |
 | v0.5 上线 | Docker、完整 CI、云部署、运行手册 | 9 | 25–35h | L1 + L3，回滚演练 L0 |
@@ -63,14 +63,18 @@
 
 ### v0.2 规则引擎
 
-按原 Task 2 执行，范围收窄为官方 5–10 人。
+按原 Task 2 执行，范围收窄为官方 5–10 人。2026-11-22 调整：实现由 AI 完成（L4），本人负责逐文件 review；原计划里“规则引擎必须 L0”的要求已取消。设计说明见 [`architecture.md`](architecture.md)。
 
-- [ ] 状态图写入 `docs/architecture.md`。
-- [ ] `RuleSet` 接口 + 5–10 人官方配置，逐项测试并注明规则来源。
-- [ ] 不可变 `GameState` / `PlayerState` / `MissionState`，动作类型 `StartGame / ProposeTeam / VoteTeam / VoteMission / Assassinate`。
-- [ ] 单一入口 `apply_action`；非法动作抛带稳定错误码的 `RuleViolation`。
-- [ ] 显式 RNG seed 的角色洗牌。
-- [ ] 属性测试 + 5–10 人参数化测试。
+- [x] 状态图写入 `docs/architecture.md`。
+- [x] `RuleSet` 接口 + 5–10 人官方配置，逐项测试并注明规则来源。
+- [x] 不可变 `GameState` / `PlayerState` / `MissionState`，动作类型 `StartGame / ProposeTeam / VoteTeam / VoteMission / Assassinate`。
+- [x] 单一入口 `apply_action`；非法动作抛带稳定错误码的 `RuleViolation`。
+- [x] 显式 RNG seed 的角色洗牌。
+- [x] 属性测试 + 5–10 人参数化测试。
+- [x] 事件驱动：状态只经 `evolve(state, event)` 改变，`replay` 可由事件重建状态（为 v0.4 的事件日志准备）。
+- [x] 终端模拟器 `python -m app.game.simulate`。
+- [x] CI 检查规则引擎分支覆盖率 ≥ 90%（当前 100%）。
+- [ ] 本人逐文件 review，并能不看代码讲清每个阶段和三个非法动作。
 
 **验收：** 规则引擎分支覆盖率 ≥ 90%；同一 seed 的终端对局可完整重放；能不看代码讲清每个阶段和三个非法动作。
 
