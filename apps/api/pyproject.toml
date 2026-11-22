@@ -9,6 +9,7 @@ description = "Authoritative API for Avalon AI Game Master"
 requires-python = ">=3.12"
 dependencies = [
   "alembic>=1.14,<2.0",
+  "anthropic>=1.0,<2.0",
   "fastapi>=0.115,<1.0",
   "psycopg[binary]>=3.2,<4.0",
   "pydantic-settings>=2.7,<3.0",
