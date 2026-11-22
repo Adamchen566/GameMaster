@@ -1,81 +1,110 @@
-import { useEffect, useState } from "react";
+import { useEffect, useReducer, useRef } from "react";
 
-import { getApiBaseUrl } from "./config";
+import { ApiError, createRoom, getGame, submitAction } from "./api/client";
+import type { ActionRequest } from "./api/client";
+import { GamePage } from "./features/game/GamePage";
+import { gameReducer, initialState } from "./features/game/gameReducer";
+import { describeError } from "./features/game/labels";
+import { LobbyPage } from "./features/lobby/LobbyPage";
+import { clearSession, loadSession, saveSession } from "./session";
 import "./styles.css";
 
-type ApiStatus = "connecting" | "online" | "offline";
-
 export default function App() {
-  const [status, setStatus] = useState<ApiStatus>("connecting");
+  const [state, dispatch] = useReducer(gameReducer, undefined, () => initialState(loadSession()));
+  // Guards against a second click landing before the first re-render.
+  const busy = useRef(false);
 
+  const resumingSession = state.screen === "resuming" ? state.session : null;
   useEffect(() => {
-    fetch(`${getApiBaseUrl()}/health`)
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("Health request failed");
-        }
+    if (resumingSession === null) {
+      return;
+    }
+    let cancelled = false;
 
-        return response.json();
-      })
-      .then((data: { status: string }) => {
-        if (data.status === "ok") {
-          setStatus("online");
-        } else {
-          setStatus("offline");
+    getGame(resumingSession)
+      .then((game) => {
+        if (!cancelled) {
+          dispatch({ type: "game_loaded", game });
         }
       })
       .catch(() => {
-        setStatus("offline");
+        if (!cancelled) {
+          clearSession();
+          dispatch({ type: "session_lost" });
+        }
       });
-  }, []);
 
-  const copy = {
-    connecting: {
-      eyebrow: "Council gateway · 00",
-      title: "召集圆桌",
-      message: "正在连接议会…",
-      detail: "正在确认主持服务与规则引擎的状态。",
-    },
-    online: {
-      eyebrow: "Council gateway · 01",
-      title: "议会已响应",
-      message: "服务在线",
-      detail: "通往阿瓦隆的道路已经开启。",
-    },
-    offline: {
-      eyebrow: "Council gateway · 02",
-      title: "城门暂闭",
-      message: "无法连接服务",
-      detail: "请确认后端服务已启动。",
-    },
-  }[status];
+    return () => {
+      cancelled = true;
+    };
+  }, [resumingSession]);
 
-  return (
-    <main className={`gateway gateway--${status}`}>
-      <div className="gateway__atmosphere" aria-hidden="true" />
+  async function handleCreate(nickname: string, playerCount: number) {
+    if (busy.current) {
+      return;
+    }
+    busy.current = true;
+    dispatch({ type: "create_started" });
+    try {
+      const room = await createRoom(nickname, playerCount);
+      const session = { gameId: room.game_id, token: room.token };
+      saveSession(session);
+      dispatch({ type: "room_created", session, game: room.game });
+    } catch (error) {
+      dispatch({ type: "create_failed", message: describeError(error) });
+    } finally {
+      busy.current = false;
+    }
+  }
 
-      <section className="gateway__panel" aria-labelledby="gateway-title">
-        <p className="gateway__eyebrow">{copy.eyebrow}</p>
+  async function handleAction(action: ActionRequest) {
+    if (state.screen !== "game" || busy.current) {
+      return;
+    }
+    busy.current = true;
+    dispatch({ type: "action_started" });
+    try {
+      const game = await submitAction(state.session, state.game.version, action);
+      dispatch({ type: "game_loaded", game });
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        // The game moved on without us: show the current position, then the reason.
+        const game = await getGame(state.session).catch(() => null);
+        if (game !== null) {
+          dispatch({ type: "game_loaded", game });
+        }
+      }
+      dispatch({ type: "action_failed", message: describeError(error) });
+    } finally {
+      busy.current = false;
+    }
+  }
 
-        <div className="council-seal" aria-hidden="true">
-          <span className="council-seal__core" />
-        </div>
+  function handleLeave() {
+    clearSession();
+    dispatch({ type: "left_game" });
+  }
 
-        <div className="gateway__copy">
-          <h1 id="gateway-title">{copy.title}</h1>
-          <div className="gateway__status" role="status" aria-live="polite">
-            <span className="gateway__status-dot" aria-hidden="true" />
-            <p>{copy.message}</p>
-          </div>
-          <p className="gateway__detail">{copy.detail}</p>
-        </div>
-
-        <footer className="gateway__footer">
-          <span>5–12 seats</span>
-          <span aria-hidden="true">◆</span>
-          <span>Human + AI</span>
-        </footer>
-      </section>
-    </main>
-  );
+  switch (state.screen) {
+    case "lobby":
+      return <LobbyPage creating={state.creating} error={state.error} onCreate={handleCreate} />;
+    case "resuming":
+      return (
+        <main className="page page--narrow">
+          <p role="status">正在回到对局…</p>
+        </main>
+      );
+    case "game":
+      return (
+        <GamePage
+          game={state.game}
+          pending={state.pending}
+          error={state.error}
+          selectedTeam={state.selectedTeam}
+          onToggleTeam={(playerId) => dispatch({ type: "team_toggled", playerId })}
+          onAction={handleAction}
+          onLeave={handleLeave}
+        />
+      );
+  }
 }

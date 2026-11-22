@@ -38,7 +38,7 @@
 | --- | --- | --- | --- | --- |
 | v0.1 骨架收尾 | 合并前端、清理、compose、`.env.example`、CI | 1 | 6–8h | L3 |
 | v0.2 规则引擎 | 5–10 人 `RuleSet`、状态机、属性测试 | 2 | 35–50h | L4，本人逐文件 review |
-| v0.3 单人可玩 | 隐私视图 + 随机合法 bot + 内存仓库 + HTTP API + 最小界面 | 4、10 前半、5 精简 | 45–60h | L0 reducer 和一个 endpoint，其余 L3 |
+| v0.3 单人可玩 | 隐私视图 + 随机合法 bot + 内存仓库 + HTTP API + 最小界面 | 4、10 前半、5 精简 | 45–60h | L4，本人逐文件 review |
 | v0.4 持久化 | PostgreSQL 事件日志、乐观并发、回放 | 3 | 30–45h | L0 SQL，L1 事务 |
 | v0.5 上线 | Docker、完整 CI、云部署、运行手册 | 9 | 25–35h | L1 + L3，回滚演练 L0 |
 | v0.6 AI | AI GM 旁白 + LLM 玩家 | 7、10 后半、11 | 45–70h | L1–L3 |
@@ -80,16 +80,19 @@
 
 ### v0.3 单人可玩
 
-目标是 1 名真人 + bot 补满席位，在浏览器里打完一局。
+目标是 1 名真人 + bot 补满席位，在浏览器里打完一局。2026-11-22 调整：与 v0.2 一样由 AI 实现（L4），本人逐文件 review；原计划里“第一个 reducer 和一个 endpoint 必须 L0”的要求已取消。
 
-- [ ] `game/views.py`：`build_player_view(state, player_id)`，秘密信息的唯一出口。
-- [ ] `agents/policy_fallback.py`：随机但合法的 bot，显式 seed。
-- [ ] `GameRepository` 接口（`append(game_id, expected_version, events)` / `load(game_id)`）+ 内存实现。
-- [ ] HTTP：`POST /rooms`（创建并用 bot 补满席位）、`POST /games/{id}/actions`、`GET /games/{id}`。
-- [ ] 重连令牌：只返回一次原文，服务端只存摘要；前端放 session storage。
-- [ ] 真人提交动作后，服务器在同一请求内推进 bot 回合，直到轮到真人或对局结束。
-- [ ] 界面：创建对局、查看角色、组队、团队投票、任务投票、刺杀、结束页；用 reducer 表达 UI 状态，只展示服务器返回的 `legalActions`。
-- [ ] 隐私测试：忠臣看不到邪恶身份、梅林只看到规则允许的信息、公开响应不含全角色映射、秘密角色不进公共 DOM。
+- [x] `game/views.py`：`build_player_view(state, player_id)`，秘密信息的唯一出口。
+- [x] `agents/policy_fallback.py`：随机但合法的 bot，显式 seed。
+- [x] `GameRepository` 接口（`append(game_id, expected_version, events)` / `load(game_id)`）+ 内存实现。
+- [x] HTTP：`POST /rooms`（创建并用 bot 补满席位）、`POST /games/{id}/actions`、`GET /games/{id}`。
+- [x] 重连令牌：只返回一次原文，服务端只存摘要；前端放 session storage。
+- [x] 真人提交动作后，服务器在同一请求内推进 bot 回合，直到轮到真人或对局结束。
+- [x] 界面：创建对局、查看角色、组队、团队投票、任务投票、刺杀、结束页；用 reducer 表达 UI 状态，只展示服务器返回的 `legalActions`。
+- [x] 隐私测试：忠臣看不到邪恶身份、梅林只看到规则允许的信息、公开响应不含全角色映射、秘密角色不进公共 DOM。
+
+- [x] 界面采用“琥珀夜色”设计系统；在浏览器里实际打完一局，刷新后能回到对局。
+- [ ] 本人逐文件 review，并在本机亲手玩一局。
 
 **验收：** 1 真人 + 4 bot 完成一局的无剪辑录屏；全 bot 对局同 seed 可重放；每个 endpoint 有成功和 403 / 404 / 409 / 422 测试。
 
