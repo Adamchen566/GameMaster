@@ -82,6 +82,12 @@ def check_invariants(state: GameState) -> None:
     else:
         assert state.mission_votes == ()
 
+    vote = state.last_team_vote
+    if vote is not None:
+        assert vote.approved == (len(vote.approvals) > len(vote.rejections))
+        assert set(vote.approvals) | set(vote.rejections) == ids
+        assert set(vote.team) <= ids
+
     if state.phase is Phase.ASSASSINATION:
         assert ruleset.assassination_enabled
         assert successes == ruleset.missions_to_win
