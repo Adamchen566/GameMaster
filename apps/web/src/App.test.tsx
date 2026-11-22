@@ -97,7 +97,14 @@ describe("App", () => {
     fillAndSubmit();
 
     expect(await screen.findByRole("button", { name: "开始游戏" })).toBeInTheDocument();
-    expect(server.body("POST /api/rooms")).toEqual({ nickname: "Adam", player_count: 5 });
+    expect(server.body("POST /api/rooms")).toEqual({
+      nickname: "Adam",
+      player_count: 5,
+      ai_seats: 0,
+      ai_style: "baseline",
+      gm: "template",
+      language: "zh",
+    });
     expect(JSON.parse(window.sessionStorage.getItem("avalon.session") ?? "null")).toEqual({
       gameId: "g1",
       token: "tok",
@@ -146,7 +153,8 @@ describe("App", () => {
 
     expect(screen.getByText("正在回到对局…")).toBeInTheDocument();
     expect(await screen.findByText("房间 ABC234")).toBeInTheDocument();
-    expect(server.calls[0].init?.headers).toEqual({ Authorization: "Bearer tok" });
+    const read = server.calls.find((call) => call.key === "GET /api/games/g1");
+    expect(read?.init?.headers).toEqual({ Authorization: "Bearer tok" });
   });
 
   it("falls back to the lobby when the remembered game is gone", async () => {

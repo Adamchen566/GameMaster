@@ -1,7 +1,7 @@
 """Request and response shapes of the HTTP API.
 
-Responses are built from a `PlayerView`, never from `GameState`, so nothing a
-player may not know can reach the wire.
+Responses are built from a `Snapshot` (a `PlayerView` plus public table status),
+never from `GameState`, so nothing a player may not know can reach the wire.
 """
 
 from __future__ import annotations
@@ -10,9 +10,10 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StrictBool, StringConstraints
 
+from app.agents.state import AgentState
 from app.game.actions import Action, Assassinate, ProposeTeam, StartGame, VoteMission, VoteTeam
-from app.game.views import PlayerView
-from app.rooms import Room
+from app.rooms import Room, Seat
+from app.service import Snapshot
 
 Nickname = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=20)]
 
@@ -20,6 +21,11 @@ Nickname = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1,
 class CreateRoomRequest(BaseModel):
     nickname: Nickname
     player_count: int
+    ai_seats: int = Field(default=0, ge=0)
+    """How many of the bot seats are played by a model instead of the random bot."""
+    ai_style: Literal["baseline", "cautious", "aggressive"] = "baseline"
+    gm: Literal["off", "template", "ai"] = "template"
+    language: Literal["zh", "en"] = "zh"
 
 
 class _ActionRequest(BaseModel):
@@ -88,6 +94,13 @@ class PlayerOut(BaseModel):
     seat: int
     name: str
     is_bot: bool
+    agent: str | None
+    """ "random" or "llm" for a bot seat. """
+    thinking: bool
+    """The game is waiting for this AI seat."""
+    last_turn: str | None
+    """How this AI seat's latest turn was decided: "model" or "fallback"."""
+    fallback_reason: str | None
     is_you: bool
     is_host: bool
     is_leader: bool
@@ -121,9 +134,28 @@ class LegalActionOut(BaseModel):
     can_fail: bool
 
 
+class AnnouncementOut(BaseModel):
+    version: int
+    tone: str
+    facts: str
+    announcement: str
+    rule_hint: str
+    source: str
+
+
+class AiUsageOut(BaseModel):
+    calls: int
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float | None
+
+
 class GameOut(BaseModel):
     game_id: str
     room_code: str
+    gm: str
+    announcements: list[AnnouncementOut]
+    ai_usage: AiUsageOut
     version: int
     phase: str
     you_id: str
@@ -147,12 +179,31 @@ class GameOut(BaseModel):
     legal_actions: list[LegalActionOut]
 
     @classmethod
-    def from_view(cls, view: PlayerView, room: Room) -> GameOut:
+    def from_snapshot(cls, snapshot: Snapshot, room: Room) -> GameOut:
+        view = snapshot.view
         seats = {seat.player_id: seat for seat in room.seats}
         vote = view.last_team_vote
         return cls(
             game_id=view.game_id,
             room_code=room.code,
+            gm=room.gm,
+            announcements=[
+                AnnouncementOut(
+                    version=item.version,
+                    tone=item.tone,
+                    facts=item.facts,
+                    announcement=item.announcement,
+                    rule_hint=item.rule_hint,
+                    source=item.source,
+                )
+                for item in snapshot.announcements
+            ],
+            ai_usage=AiUsageOut(
+                calls=snapshot.usage.calls,
+                input_tokens=snapshot.usage.input_tokens,
+                output_tokens=snapshot.usage.output_tokens,
+                cost_usd=snapshot.cost_usd,
+            ),
             version=view.version,
             phase=view.phase,
             you_id=view.you_id,
@@ -163,6 +214,11 @@ class GameOut(BaseModel):
                     seat=player.seat,
                     name=seats[player.id].name,
                     is_bot=seats[player.id].is_bot,
+                    agent=_agent(seats[player.id]),
+                    thinking=player.id in snapshot.thinking,
+                    # The agent's private note is deliberately not part of the response.
+                    last_turn=_state(snapshot, player.id).last_source,
+                    fallback_reason=_state(snapshot, player.id).last_fallback_reason,
                     is_you=player.id == view.you_id,
                     is_host=player.id == view.host_id,
                     is_leader=player.id == view.leader_id,
@@ -216,6 +272,19 @@ class GameOut(BaseModel):
                 for legal in view.legal_actions
             ],
         )
+
+
+def _agent(seat: Seat) -> str | None:
+    return (seat.agent or "random") if seat.is_bot else None
+
+
+def _state(snapshot: Snapshot, player_id: str) -> AgentState:
+    return snapshot.agents.get(player_id, AgentState())
+
+
+class ConfigOut(BaseModel):
+    llm_available: bool
+    """Whether this server can run model-driven seats and the AI game master."""
 
 
 class RoomCreatedOut(BaseModel):

@@ -1,5 +1,12 @@
 import { ApiError } from "../../api/client";
-import type { Alignment, Phase, Player, Role, WinReason } from "../../api/client";
+import type {
+  Alignment,
+  FallbackReason,
+  Phase,
+  Player,
+  Role,
+  WinReason,
+} from "../../api/client";
 
 export const ROLE_NAMES: Record<Role, string> = {
   merlin: "梅林",
@@ -50,7 +57,17 @@ export const SEEN_AS_NAMES: Record<NonNullable<Player["seen_as"]>, string> = {
   merlin_or_morgana: "梅林或莫甘娜",
 };
 
+export const FALLBACK_REASONS: Record<FallbackReason, string> = {
+  timeout: "模型超时",
+  unavailable: "模型不可用",
+  refused: "模型拒绝回答",
+  invalid_output: "模型的回答不合法",
+  budget_exhausted: "本局模型额度已用完",
+};
+
 const ERROR_MESSAGES: Record<string, string> = {
+  llm_not_configured: "这台服务器没有配置模型，不能使用 AI 玩家或 AI 主持。",
+  too_many_ai_seats: "AI 玩家席位不能超过机器人席位数。",
   network: "连不上服务器，请确认后端已启动后重试。",
   invalid_player_count: "这个人数不支持，请选择 5 到 10 人。",
   missing_token: "登录信息丢失，请重新创建对局。",

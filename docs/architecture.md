@@ -240,7 +240,7 @@ Compose 冒烟测试另外在真实的三容器环境里开一局、重启 API �
 
 ## 5. AI 玩家和 AI 主持
 
-威胁、对策和对应测试在 [`threat-model.md`](threat-model.md)。这一节只说模块怎么分工。目前这些模块还没有接进 `GameService`。
+威胁、对策和对应测试在 [`threat-model.md`](threat-model.md)。这一节说模块怎么分工，以及它们怎么接进对局（5.1）。
 
 ```text
 PlayerView ──build_observation──> 观察(JSON) ──> ModelClient ──> 回答(JSON)
@@ -278,4 +278,35 @@ PlayerView ──build_observation──> 观察(JSON) ──> ModelClient ─�
 | `effort` | `low` | 回合有 8 秒时限，所以取低档；调高会更慢更贵 |
 | `max_tokens` | 4000 | 含模型的思考 |
 | 拒答处理 | 服务端 fallback 开启 | 模型按安全策略拒答时，API 在同一次调用里换备用模型重跑 |
+
+### 5.1 接进对局
+
+```text
+真人 POST /actions ──> submit：应用真人动作 → 随机 bot 立即走完 → 存事件 → 返回
+                                   │
+                                   └─ 如果轮到 AI 席位：交给后台执行器，请求不等它
+后台执行器 ──> 读状态 → 问模型（不持锁，可能几秒）→ 重新读状态 → 应用并存事件 → 下一个 AI 席位
+前端 ──每 1.5 秒 GET /games/{id}──> 只在有席位“思考中”时轮询
+```
+
+| 问题 | 做法 |
+| --- | --- |
+| 模型慢，真人的请求会不会卡 | 不会。随机 bot 在请求内走完；模型席位在后台走，请求立即返回 |
+| 模型思考时真人先动了 | 回来后重新读状态：如果这个席位面对的合法动作没变（例如大家同时投票），原决定照用；变了就重新问 |
+| 同一局会不会起两个后台任务 | 不会，按 `game_id` 去重 |
+| 服务重启时 AI 正要行动 | 后台任务丢了，但任何一次 `GET /games/{id}` 都会检查并重新启动 |
+| 房间里有模型席位，但服务器现在没配模型 | 该席位按随机 bot 走，状态显示“模型不可用” |
+| 前端怎么知道在等谁 | 响应里每个玩家有 `thinking`；AI 席位还有 `last_turn`（`model` / `fallback`）和 `fallback_reason` |
+| 笔记会不会泄露 | `agent_states.note` 只回传给同一席位的下一回合，不在任何响应里；有测试检查响应正文 |
+| 主持的播报什么时候生成 | 固定播报在读取时现算；AI 主持在后台为新事件各生成一次，生成前先显示固定播报 |
+
+| 环境变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `LLM_PROVIDER` | `none` | 设为 `anthropic` 才能开 AI 席位和 AI 主持 |
+| `ANTHROPIC_API_KEY` | — | 由 SDK 读取 |
+| `LLM_MODEL` | `claude-opus-5-5` | |
+| `LLM_EFFORT` | `low` | |
+| `LLM_MAX_TOKENS_PER_GAME` | `300000` | 输入加输出；用完后该局的 AI 席位改由随机 bot 走 |
+| `LLM_PLAYER_TIMEOUT_SECONDS` / `LLM_GM_TIMEOUT_SECONDS` | `8` / `3` | |
+| `LLM_INPUT_PRICE_PER_MTOK` / `LLM_OUTPUT_PRICE_PER_MTOK` | 不设 | 两个都设了才显示估算成本（美元 / 百万 token） |
 

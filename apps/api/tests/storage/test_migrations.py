@@ -17,10 +17,30 @@ def test_migrations_build_exactly_the_schema_the_code_expects(database: Database
     assert differences == []
 
 
-def test_migrated_database_has_the_four_tables(database: Database) -> None:
+def test_migrated_database_has_exactly_the_expected_tables(database: Database) -> None:
     tables = set(inspect(database.engine).get_table_names())
 
-    assert tables == {"games", "game_events", "rooms", "room_players", "alembic_version"}
+    assert tables == {
+        "games",
+        "game_events",
+        "rooms",
+        "room_players",
+        "agent_states",
+        "alembic_version",
+    }
+
+
+def test_check_constraints_survive_the_table_rebuild(database: Database) -> None:
+    """SQLite rebuilds room_players to add a constraint; the old ones must come along."""
+    names = {
+        check["name"] for check in inspect(database.engine).get_check_constraints("room_players")
+    }
+
+    assert names == {
+        "ck_room_players_seat_not_negative",
+        "ck_room_players_only_humans_have_tokens",
+        "ck_room_players_only_bots_have_agents",
+    }
 
 
 def test_event_log_is_keyed_by_game_and_version(database: Database) -> None:

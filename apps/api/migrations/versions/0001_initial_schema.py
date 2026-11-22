@@ -33,10 +33,10 @@ def upgrade() -> None:
         sa.Column("created_at", Timestamp, nullable=False),
         sa.Column("finished_at", Timestamp, nullable=True),
         sa.PrimaryKeyConstraint("id", name="pk_games"),
-        sa.CheckConstraint("version >= 0", name="ck_games_version_not_negative"),
+        sa.CheckConstraint("version >= 0", name=op.f("ck_games_version_not_negative")),
         sa.CheckConstraint(
             "(winner IS NULL) = (finished_at IS NULL) AND (winner IS NULL) = (win_reason IS NULL)",
-            name="ck_games_finished_fields_together",
+            name=op.f("ck_games_finished_fields_together"),
         ),
     )
     op.create_table(
@@ -52,7 +52,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["game_id"], ["games.id"], name="fk_game_events_game_id_games", ondelete="CASCADE"
         ),
-        sa.CheckConstraint("version >= 1", name="ck_game_events_version_positive"),
+        sa.CheckConstraint("version >= 1", name=op.f("ck_game_events_version_positive")),
     )
     op.create_table(
         "rooms",
@@ -83,9 +83,9 @@ def upgrade() -> None:
         ),
         sa.UniqueConstraint("room_id", "player_id", name="uq_room_players_room_id_player_id"),
         sa.UniqueConstraint("token_hash", name="uq_room_players_token_hash"),
-        sa.CheckConstraint("seat >= 0", name="ck_room_players_seat_not_negative"),
+        sa.CheckConstraint("seat >= 0", name=op.f("ck_room_players_seat_not_negative")),
         sa.CheckConstraint(
-            "is_bot = (token_hash IS NULL)", name="ck_room_players_only_humans_have_tokens"
+            "is_bot = (token_hash IS NULL)", name=op.f("ck_room_players_only_humans_have_tokens")
         ),
     )
 

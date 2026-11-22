@@ -23,10 +23,14 @@ class _RacingRepository(InMemoryGameRepository):
 
 
 class _ForgetfulRepository(InMemoryGameRepository):
-    """Behaves as if the game row disappeared while its room still exists."""
+    """Can be told to behave as if the game row disappeared while its room still exists."""
+
+    forgot = False
 
     def load(self, game_id: str) -> GameState:
-        raise GameNotFound(game_id)
+        if self.forgot:
+            raise GameNotFound(game_id)
+        return super().load(game_id)
 
 
 @contextmanager
@@ -55,8 +59,10 @@ def test_losing_a_race_to_another_writer_is_a_409_the_client_can_retry() -> None
 
 
 def test_game_missing_from_storage_is_a_404() -> None:
-    with client_for(_ForgetfulRepository()) as client:
+    repository = _ForgetfulRepository()
+    with client_for(repository) as client:
         room = client.post("/rooms", json={"nickname": "Adam", "player_count": 5}).json()
+        repository.forgot = True
 
         response = client.get(
             f"/games/{room['game_id']}", headers={"Authorization": f"Bearer {room['token']}"}

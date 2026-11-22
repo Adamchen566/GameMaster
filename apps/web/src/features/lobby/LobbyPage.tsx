@@ -1,22 +1,45 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 
+import type { AiStyle, GmMode, RoomOptions } from "../../api/client";
 import { ApiStatus } from "./ApiStatus";
 
 const PLAYER_COUNTS = [5, 6, 7, 8, 9, 10];
 const MAX_NICKNAME_LENGTH = 20;
 
+const STYLES: { value: AiStyle; label: string }[] = [
+  { value: "baseline", label: "均衡" },
+  { value: "cautious", label: "谨慎" },
+  { value: "aggressive", label: "激进" },
+];
+
+const GM_MODES: { value: GmMode; label: string; needsModel: boolean }[] = [
+  { value: "template", label: "固定播报", needsModel: false },
+  { value: "ai", label: "AI 主持", needsModel: true },
+  { value: "off", label: "关闭", needsModel: false },
+];
+
 interface LobbyPageProps {
   creating: boolean;
   error: string | null;
-  onCreate: (nickname: string, playerCount: number) => void;
+  /** Whether the server can run model-driven seats and the AI game master. */
+  llmAvailable?: boolean;
+  onCreate: (nickname: string, playerCount: number, options: RoomOptions) => void;
 }
 
-export function LobbyPage({ creating, error, onCreate }: LobbyPageProps) {
+export function LobbyPage({ creating, error, llmAvailable = false, onCreate }: LobbyPageProps) {
   // Kept here, not in the reducer: a failed request must not wipe what was typed.
   const [nickname, setNickname] = useState("");
   const [playerCount, setPlayerCount] = useState(5);
+  const [aiSeats, setAiSeats] = useState(0);
+  const [aiStyle, setAiStyle] = useState<AiStyle>("baseline");
+  const [gm, setGm] = useState<GmMode>("template");
   const [touched, setTouched] = useState(false);
+
+  const botSeats = playerCount - 1;
+  // Choices that need a model fall back to what the server can do.
+  const effectiveAiSeats = llmAvailable ? Math.min(aiSeats, botSeats) : 0;
+  const effectiveGm: GmMode = gm === "ai" && !llmAvailable ? "template" : gm;
 
   const trimmed = nickname.trim();
   const nicknameError =
@@ -30,7 +53,7 @@ export function LobbyPage({ creating, error, onCreate }: LobbyPageProps) {
     event.preventDefault();
     setTouched(true);
     if (nicknameError === null && !creating) {
-      onCreate(trimmed, playerCount);
+      onCreate(trimmed, playerCount, { aiSeats: effectiveAiSeats, aiStyle, gm: effectiveGm });
     }
   }
 
@@ -79,6 +102,69 @@ export function LobbyPage({ creating, error, onCreate }: LobbyPageProps) {
                   onChange={() => setPlayerCount(count)}
                 />
                 <span>{count} 人</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        {llmAvailable ? (
+          <>
+            <fieldset className="field">
+              <legend>AI 玩家席位（其余席位是随机机器人）</legend>
+              <div className="choices">
+                {Array.from({ length: botSeats + 1 }, (_, count) => (
+                  <label key={count} className="choice">
+                    <input
+                      type="radio"
+                      name="ai-seats"
+                      value={count}
+                      checked={effectiveAiSeats === count}
+                      onChange={() => setAiSeats(count)}
+                    />
+                    <span>{count} 个</span>
+                  </label>
+                ))}
+              </div>
+              <p className="muted">AI 玩家的每个回合都会调用一次模型，会产生费用。</p>
+            </fieldset>
+
+            {effectiveAiSeats > 0 && (
+              <fieldset className="field">
+                <legend>AI 玩家的打法</legend>
+                <div className="choices">
+                  {STYLES.map((style) => (
+                    <label key={style.value} className="choice">
+                      <input
+                        type="radio"
+                        name="ai-style"
+                        value={style.value}
+                        checked={aiStyle === style.value}
+                        onChange={() => setAiStyle(style.value)}
+                      />
+                      <span>{style.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            )}
+          </>
+        ) : (
+          <p className="muted">这台服务器没有配置模型，其余席位都是随机机器人。</p>
+        )}
+
+        <fieldset className="field">
+          <legend>主持人</legend>
+          <div className="choices">
+            {GM_MODES.filter((mode) => llmAvailable || !mode.needsModel).map((mode) => (
+              <label key={mode.value} className="choice">
+                <input
+                  type="radio"
+                  name="gm"
+                  value={mode.value}
+                  checked={effectiveGm === mode.value}
+                  onChange={() => setGm(mode.value)}
+                />
+                <span>{mode.label}</span>
               </label>
             ))}
           </div>
