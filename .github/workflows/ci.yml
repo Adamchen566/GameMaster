@@ -30,8 +30,12 @@ jobs:
         run: python -m pip install -e ".[dev]"
       - name: Lint
         run: ruff check .
-      - name: Test
-        run: pytest
+      - name: Check formatting of the rules engine
+        run: ruff format --check app/game tests/game
+      - name: Test with branch coverage
+        run: pytest --cov --cov-fail-under=75
+      - name: Rules engine keeps at least 90% branch coverage
+        run: coverage report --include="app/game/*" --fail-under=90
 
   web:
     name: Web (typecheck, vitest, build)

@@ -194,7 +194,7 @@ GameMaster/
 - Consumes: `Action` discriminated union。
 - Produces: `apply_action(state: GameState, action: Action) -> tuple[GameState, list[GameEvent]]`。
 
-**AI level:** 状态、动作类型和至少 8 个核心测试必须 L0；完成后可用 L2 查遗漏边界。
+**AI level:** 原要求为状态、动作类型和至少 8 个核心测试必须 L0。2026-11-22 调整为 L4：由 AI 实现，本人逐文件 review，并能不看代码讲清每个阶段和三个非法动作。
 
 - [ ] 画出 `LOBBY → TEAM_PROPOSAL → TEAM_VOTE → MISSION_VOTE → ASSASSINATION → FINISHED` 状态图并写入 `docs/architecture.md`。
 - [ ] 定义 `RuleSet`：`min_players/max_players/team_sizes/fail_thresholds/good_count/evil_count/roles/assassination_enabled`；引擎只能依赖该接口，不读取散落常量。

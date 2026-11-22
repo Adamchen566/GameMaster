@@ -14,7 +14,7 @@ AI 等级描述的是**单个任务**，不是整个项目永久处于同一级�
 
 ### 不可违反的规则
 
-1. 规则引擎关键状态转换、第一次 React reducer、第一次 SQL JOIN、第一次 WebSocket 重连状态机必须由本人以 L0/L1 完成。
+1. 第一次 React reducer、第一次 SQL JOIN、第一次 WebSocket 重连状态机必须由本人以 L0/L1 完成。规则引擎原本也在此列；2026-11-22 起改为由 AI 实现（L4）、本人逐文件 review。
 2. 只有已经存在“你的尝试 + 失败证据”时，才能进入 L2。
 3. L3/L4 代码如果无法在不看 AI 对话的情况下解释，就不能合并。
 4. 每个工作日先完成 30 分钟 L0，再使用更高等级。
@@ -161,10 +161,10 @@ L0 完成。我创建了 apps/api/app/main.py。
 | 1 | `app/main.py` | L0 | FastAPI app、装饰器、JSON 响应 | health test 通过 |
 | 2 | `web` 初始化与 API 状态页面 | L1 + L3 CSS | React render、effect/request、三种状态 | 前端测试和截图 |
 | 3 | `compose.yaml` | L1 + L3 | 容器、端口、环境变量、服务依赖 | 三服务启动 |
-| 4 | `game/state.py` | L0 | dataclass/type、不可变状态 | 状态模型测试 |
-| 5 | `game/rulesets.py` | L0/L1 | 配置驱动、5–12 人参数化 | 全人数测试 |
-| 6 | `game/actions.py` | L0 | discriminated union、输入边界 | 类型/构造测试 |
-| 7 | `game/engine.py` | L0/L2 | 纯函数、状态机、异常 | 90% 分支覆盖率 |
+| 4 | `game/state.py` | L4 + 本人 review | dataclass/type、不可变状态 | 状态模型测试 |
+| 5 | `game/rulesets.py` | L4 + 本人 review | 配置驱动、5–10 人参数化 | 全人数测试 |
+| 6 | `game/actions.py` | L4 + 本人 review | discriminated union、输入边界 | 类型/构造测试 |
+| 7 | `game/engine.py` | L4 + 本人 review | 纯函数、状态机、异常 | 90% 分支覆盖率 |
 | 8 | PostgreSQL repository | L0 SQL + L2 | schema、事务、索引、乐观锁 | 容器集成测试 |
 | 9 | React lobby/game | L0 reducer + L3 UI | 表单、状态、错误、可访问性 | 组件/E2E 测试 |
 | 10 | WebSocket | L0/L1/L2 | async、版本、重连、竞态 | 掉线恢复 E2E |
