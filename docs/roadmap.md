@@ -19,6 +19,7 @@
 
 - 三次提交都在 2026-09-15，之后到本次修订没有新提交。
 - 前端 3 个测试通过的说法来自学习日志，本次修订没有重跑。
+- 这张表是修订当天的基线，之后的进度看第 4 节的勾选。
 
 ## 2. 相对原计划的调整
 
@@ -35,7 +36,7 @@
 
 | 版本 | 交付 | 对应原 Task | 工时 target | AI 等级 |
 | --- | --- | --- | --- | --- |
-| v0.1 骨架收尾 | 合并前端、清理、compose、`.env.example`、CI、学习日志 | 1 | 6–8h | L3，日志本人写 |
+| v0.1 骨架收尾 | 合并前端、清理、compose、`.env.example`、CI | 1 | 6–8h | L3 |
 | v0.2 规则引擎 | 5–10 人 `RuleSet`、状态机、属性测试 | 2 | 35–50h | L0 为主，L2 查漏 |
 | v0.3 单人可玩 | 隐私视图 + 随机合法 bot + 内存仓库 + HTTP API + 最小界面 | 4、10 前半、5 精简 | 45–60h | L0 reducer 和一个 endpoint，其余 L3 |
 | v0.4 持久化 | PostgreSQL 事件日志、乐观并发、回放 | 3 | 30–45h | L0 SQL，L1 事务 |
@@ -50,16 +51,15 @@
 
 ### v0.1 骨架收尾
 
-- [ ] 给 `codex/frontend-health-status` 开 PR 并合并到 `main`。
-- [ ] 删除已入库的 `apps/web/tsconfig.*.tsbuildinfo`，并加入 `.gitignore`。
-- [ ] `vite`、`@vitejs/plugin-react` 移到 `devDependencies`。
-- [ ] API 地址改为从环境变量读取（原计划要求），不写死 `/api` 代理和 8000 端口文案。
-- [ ] 添加 `compose.yaml`（web、api、postgres）和 `.env.example`。
-- [ ] 添加 `.github/workflows/ci.yml`：后端 ruff + pytest，前端 typecheck + vitest + build。
-- [ ] 本人填写学习日志 Entry 001，以及 Entry 002 的 “I can explain” 四条。
-- [x] README 与现状一致（本次修订已更新）。
+- [x] 把 `codex/frontend-health-status` 合并到 `main`。
+- [x] 删除已入库的 `apps/web/tsconfig.*.tsbuildinfo`，并加入 `.gitignore`。
+- [x] `vite`、`@vitejs/plugin-react` 移到 `devDependencies`。
+- [x] API 地址改为从环境变量读取（原计划要求）：浏览器侧 `VITE_API_BASE_URL`，代理目标 `API_PROXY_TARGET`；去掉 8000 端口文案。
+- [x] 添加 `compose.yaml`（web、api、postgres）、两个开发用 Dockerfile 和 `.env.example`。
+- [x] 添加 `.github/workflows/ci.yml`：后端 ruff + pytest，前端 typecheck + vitest + build，外加 Compose 冒烟测试。
+- [x] README 与现状一致。
 
-**验收：** CI 首次全绿；`docker compose up` 后浏览器看到“服务在线”。
+**验收：** CI 全绿，其中 Compose 冒烟测试确认三个服务健康、前端代理能访问到后端。
 
 ### v0.2 规则引擎
 

@@ -9,7 +9,9 @@ htmlcov/
 
 # JavaScript
 node_modules/
+.pnpm-store/
 dist/
+*.tsbuildinfo
 coverage/
 playwright-report/
 test-results/
@@ -28,4 +30,3 @@ Thumbs.db
 # Runtime data
 *.log
 postgres-data/
-
