@@ -39,7 +39,7 @@
 | v0.1 骨架收尾 | 合并前端、清理、compose、`.env.example`、CI | 1 | 6–8h | L3 |
 | v0.2 规则引擎 | 5–10 人 `RuleSet`、状态机、属性测试 | 2 | 35–50h | L4，本人逐文件 review |
 | v0.3 单人可玩 | 隐私视图 + 随机合法 bot + 内存仓库 + HTTP API + 最小界面 | 4、10 前半、5 精简 | 45–60h | L4，本人逐文件 review |
-| v0.4 持久化 | PostgreSQL 事件日志、乐观并发、回放 | 3 | 30–45h | L0 SQL，L1 事务 |
+| v0.4 持久化 | PostgreSQL 事件日志、乐观并发、回放 | 3 | 30–45h | L4，本人逐文件 review |
 | v0.5 上线 | Docker、完整 CI、云部署、运行手册 | 9 | 25–35h | L1 + L3，回滚演练 L0 |
 | v0.6 AI | AI GM 旁白 + LLM 玩家 | 7、10 后半、11 | 45–70h | L1–L3 |
 | v0.7 评测 | GM 30 例、玩家 80 例、基线对比、结构化日志 | 8、12（去掉 11–12 人） | 30–45h | 指标和金标 L0/L1 |
@@ -100,13 +100,16 @@
 
 ### v0.4 持久化
 
-按原 Task 3 执行，把内存仓库换成 PostgreSQL 实现，接口不变。
+按原 Task 3 执行，把内存仓库换成 PostgreSQL 实现，接口不变。2026-11-22 调整：与 v0.2、v0.3 一样由 AI 实现（L4），本人逐文件 review；原计划的“L0 SQL、L1 事务”和“手写 5 条查询”改为读懂并能讲清。表结构和查询说明见 [`database.md`](database.md)。
 
-- [ ] 表：`rooms`、`room_players`、`games`、`game_events`；`(game_id, version)` 唯一约束。
-- [ ] Alembic 初始迁移。
-- [ ] 单事务事件追加 + 乐观版本检查。
-- [ ] 集成测试跑真实 PostgreSQL 容器：回放一致、旧 `expected_version` 冲突、无孤儿玩家。
-- [ ] 手写并解释 5 条查询：房间玩家、对局时长、每局任务结果、玩家胜率、最近 20 个事件。
+- [x] 表：`rooms`、`room_players`、`games`、`game_events`；`(game_id, version)` 唯一约束（事件表主键）。
+- [x] Alembic 初始迁移；测试检查迁移结果与代码里的表定义一致。
+- [x] 单事务事件追加 + 乐观版本检查；建房的三张表同一事务。
+- [x] 集成测试跑真实 PostgreSQL 容器（CI）：回放一致、旧 `expected_version` 冲突、并发写入只成功一个、无孤儿玩家。
+- [x] 5 条查询及说明：房间玩家、对局时长、每局任务结果、玩家胜率、最近 20 个事件；CI 在 PostgreSQL 上执行并核对结果。
+- [x] API 和 Compose 接入 `DATABASE_URL`；没有它时仍用内存，本机也可用 SQLite 文件。
+- [x] Compose 冒烟测试：开一局 → 重启 API 容器 → 同一令牌取回同一局。
+- [ ] 本人逐文件 review，能讲清乐观并发的那条 `UPDATE` 和 5 条查询各自走哪个索引。
 
 **验收：** 服务重启后刷新页面能回到同一局；ER 图；回放一致性测试。
 
@@ -114,7 +117,7 @@
 
 按原 Task 9 执行。
 
-- [ ] CI 补齐：PostgreSQL 集成测试、Playwright 单浏览器冒烟（1 真人 + bot 一局）、镜像 build。
+- [ ] CI 补齐：Playwright 单浏览器冒烟（1 真人 + bot 一局）、镜像 build。
 - [ ] 两个 Dockerfile：非 root 用户 + healthcheck；前端构建不嵌入服务端密钥。
 - [ ] 选定一个平台（Render / Railway / Fly.io），配置 PostgreSQL、API、web、HTTPS、允许来源。
 - [ ] 健康检查区分进程存活与数据库就绪。

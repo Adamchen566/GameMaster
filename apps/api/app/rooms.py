@@ -1,8 +1,9 @@
 """Rooms: who sits in which seat of a game, and how humans prove it.
 
 A room is the application-level wrapper around one game. The rules engine only
-knows player ids; names, bot seats and reconnect tokens live here. Storage is
-in memory for now and moves to PostgreSQL in v0.4.
+knows player ids; names, bot seats and reconnect tokens live here.
+`InMemoryRoomStore` is lost on restart; `app.storage.rooms.SqlRoomStore` keeps
+the same data in the database.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 from dataclasses import dataclass
+from typing import Protocol
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +49,17 @@ _ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O or 1/I
 
 def new_room_code() -> str:
     return "".join(secrets.choice(_ROOM_CODE_ALPHABET) for _ in range(6))
+
+
+class RoomStore(Protocol):
+    def add(self, room: Room) -> None:
+        """Store a new room with its seats."""
+
+    def by_game_id(self, game_id: str) -> Room | None:
+        """Return the room that wraps this game, if any."""
+
+    def by_token_hash(self, token_hash: str) -> tuple[Room, Seat] | None:
+        """Return the human seat this reconnect token digest belongs to, if any."""
 
 
 class InMemoryRoomStore:

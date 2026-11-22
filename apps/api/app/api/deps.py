@@ -2,20 +2,37 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.api.errors import ApiError
+from app.config import get_settings
 from app.service import GameService, Session
+from app.storage.database import Database
+from app.storage.games import SqlGameRepository
+from app.storage.rooms import SqlRoomStore
 
-# In-memory for now, so there is exactly one service per process.
-_service = GameService()
+
+def build_service(database_url: str | None) -> GameService:
+    """With a database URL games survive a restart; without one they live in memory."""
+    if database_url is None:
+        return GameService()
+
+    database = Database.from_url(database_url)
+    return GameService(
+        SqlGameRepository(database),
+        SqlRoomStore(database),
+        transaction=database.transaction,
+    )
 
 
+@lru_cache
 def get_service() -> GameService:
-    return _service
+    """One service per process, built on first use."""
+    return build_service(get_settings().database_url)
 
 
 ServiceDep = Annotated[GameService, Depends(get_service)]
