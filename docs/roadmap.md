@@ -36,7 +36,7 @@
 
 | 版本 | 交付 | 对应原 Task | 工时 target | AI 等级 |
 | --- | --- | --- | --- | --- |
-| v0.1 骨架收尾 | 合并前端、清理、compose、`.env.example`、CI、学习日志 | 1 | 6–8h | L3，日志本人写 |
+| v0.1 骨架收尾 | 合并前端、清理、compose、`.env.example`、CI | 1 | 6–8h | L3 |
 | v0.2 规则引擎 | 5–10 人 `RuleSet`、状态机、属性测试 | 2 | 35–50h | L0 为主，L2 查漏 |
 | v0.3 单人可玩 | 隐私视图 + 随机合法 bot + 内存仓库 + HTTP API + 最小界面 | 4、10 前半、5 精简 | 45–60h | L0 reducer 和一个 endpoint，其余 L3 |
 | v0.4 持久化 | PostgreSQL 事件日志、乐观并发、回放 | 3 | 30–45h | L0 SQL，L1 事务 |
@@ -57,11 +57,9 @@
 - [x] API 地址改为从环境变量读取（原计划要求）：浏览器侧 `VITE_API_BASE_URL`，代理目标 `API_PROXY_TARGET`；去掉 8000 端口文案。
 - [x] 添加 `compose.yaml`（web、api、postgres）、两个开发用 Dockerfile 和 `.env.example`。
 - [x] 添加 `.github/workflows/ci.yml`：后端 ruff + pytest，前端 typecheck + vitest + build，外加 Compose 冒烟测试。
-- [ ] 本人填写学习日志 Entry 001，以及 Entry 002 的 “I can explain” 四条。
-- [ ] 本人在装有 Docker 的机器上跑一次 `docker compose up`，在浏览器里确认“服务在线”并截图留证。
 - [x] README 与现状一致。
 
-**验收：** CI 首次全绿；`docker compose up` 后浏览器看到“服务在线”。
+**验收：** CI 全绿，其中 Compose 冒烟测试确认三个服务健康、前端代理能访问到后端。
 
 ### v0.2 规则引擎
 

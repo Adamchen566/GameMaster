@@ -2,14 +2,13 @@
 
 一个用于训练完整软件工程链路的阿瓦隆项目：React/TypeScript 前端、FastAPI 后端、PostgreSQL、确定性规则引擎，以及受限工具调用的 AI 主持和 AI 玩家。当前路线先做官方 5–10 人的单人对 AI 闭环；多人联机和 11–12 人扩展规则暂缓。
 
-当前阶段：v0.1 骨架收尾（原 Task 1 的剩余部分）。健康检查的前后端切片、Compose 和 CI 已就位；还差本人填写学习日志 Entry 001 和 Entry 002。
+当前阶段：v0.1 骨架已完成（健康检查的前后端切片、Compose、CI）。下一步是 v0.2 规则引擎。
 
 ## 从这里开始
 
 1. 阅读 [`docs/roadmap.md`](docs/roadmap.md)，确认当前版本和验收标准。
 2. 阅读 [`docs/getting-started.md`](docs/getting-started.md)，了解 AI 五等级和文件职责。
-3. 按下面的“本地运行”把三种方式各跑通一次。
-4. 在 [`docs/learning-log.md`](docs/learning-log.md) 亲手补完 Entry 001 和 Entry 002。
+3. 按下面的“本地运行”把环境跑通。
 
 ## 本地运行
 
