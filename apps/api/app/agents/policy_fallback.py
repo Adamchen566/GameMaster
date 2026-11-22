@@ -10,10 +10,16 @@ from __future__ import annotations
 import random
 
 from app.game.actions import Action, Assassinate, ProposeTeam, VoteMission, VoteTeam
-from app.game.views import PlayerView
+from app.game.views import Knowledge, PlayerView
 
 APPROVAL_RATE = 0.6
 EVIL_FAIL_RATE = 0.8
+
+
+def _plausible_merlins(view: PlayerView, targets: tuple[str, ...]) -> tuple[str, ...]:
+    """Skip players the Assassin already knows are evil; they cannot be Merlin."""
+    known_evil = {player.id for player in view.players if player.seen_as is Knowledge.EVIL}
+    return tuple(target for target in targets if target not in known_evil) or targets
 
 
 def choose_action(view: PlayerView, rng: random.Random) -> Action:
@@ -38,7 +44,7 @@ def choose_action(view: PlayerView, rng: random.Random) -> Action:
         case "assassinate":
             return Assassinate(
                 player_id=view.you_id,
-                target_id=rng.choice(legal.targets),
+                target_id=rng.choice(_plausible_merlins(view, legal.targets)),
                 expected_version=view.version,
             )
         case _:

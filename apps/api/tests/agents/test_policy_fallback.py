@@ -4,10 +4,19 @@ import pytest
 
 from app.agents.policy_fallback import choose_action
 from app.game.engine import apply_action
-from app.game.state import GameState, Phase
+from app.game.rulesets import Alignment, Role
+from app.game.state import GameState, MissionOutcome, Phase
 from app.game.views import build_player_view
 from tests.game.invariants import check_invariants
-from tests.game.scenarios import lobby, started
+from tests.game.scenarios import (
+    complete_missions,
+    id_with_role,
+    ids_with_alignment,
+    lobby,
+    started,
+)
+
+SUCCESS = MissionOutcome.SUCCESS
 
 
 def bot_to_act(state: GameState) -> str:
@@ -58,6 +67,18 @@ def test_bot_with_nothing_to_do_is_an_error() -> None:
 
     with pytest.raises(ValueError, match="nothing to do"):
         choose_action(build_player_view(state, idle), random.Random(0))
+
+
+def test_assassin_bot_never_targets_a_player_it_knows_is_evil() -> None:
+    state = complete_missions(started(10), SUCCESS, SUCCESS, SUCCESS)
+    assassin = id_with_role(state, Role.ASSASSIN)
+    evil = set(ids_with_alignment(state, Alignment.EVIL))
+    view = build_player_view(state, assassin)
+
+    targets = {choose_action(view, random.Random(seed)).target_id for seed in range(60)}  # type: ignore[union-attr]
+
+    assert targets
+    assert targets.isdisjoint(evil)
 
 
 def test_bot_never_starts_a_game() -> None:
