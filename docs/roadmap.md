@@ -227,10 +227,12 @@
 
 按原 Task 13 执行。
 
-- [ ] README 首屏：用户问题、在线 Demo、60–90 秒视频、架构图、技术栈、快速启动。
-- [ ] `docs/architecture.md` 数据流图。
-- [ ] 至少三篇 ADR：LLM 不拥有规则、事件日志用于回放和并发控制、AI Agent 最小权限与回退。
-- [ ] `docs/evidence/resume-metrics.md`：测试数 / 覆盖率、CI 时长、评测通过率、P95 延迟、回退率、试玩人数。
+- [x] README 首屏：用户问题、功能、关键数字、架构图、技术栈、快速启动。
+- [ ] README 里的在线 Demo 和 60–90 秒视频。（Demo 依赖 v0.5 部署；视频要本人录。）
+- [x] `docs/architecture.md` 数据流图（第 0 节）。
+- [x] 三篇 ADR：[`adr/`](adr/README.md)。
+- [x] [`evidence/resume-metrics.md`](evidence/resume-metrics.md)：测试数 / 覆盖率、CI 时长、评测通过率、P95 延迟、回退率；试玩人数为 0。
+- [x] [`CHANGELOG.md`](../CHANGELOG.md)：各版本做了什么。
 - [ ] 5–10 名真实试玩者各打一局单人对 AI，收集三个固定问题的反馈。
 - [ ] 无剪辑 Demo、`v1.0.0` tag、release notes。
 - [ ] 2 分钟中英文项目介绍 + 5 个深挖问题答案。

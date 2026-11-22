@@ -1,6 +1,53 @@
 # 架构
 
-目前有规则引擎（v0.2）和单人对局的前后端（v0.3）。持久化、联机和 AI 接入后在这里补充。
+从规则引擎（v0.2）一路写到回放和 11–12 人（v0.10）。三条关键决定见 [`adr/`](adr/README.md)。
+
+## 0. 数据流总览
+
+```mermaid
+flowchart LR
+    subgraph Browser["浏览器（React）"]
+        UI["大厅 / 圆桌 / 回放"]
+        PB["逐步播放<br/>buildSteps · sceneAt"]
+    end
+
+    subgraph API["FastAPI"]
+        R["/rooms · /games/{id}<br/>/actions · /replay"]
+        S["GameService<br/>锁 + 版本检查"]
+    end
+
+    subgraph Engine["规则引擎（纯 Python）"]
+        A["apply_action<br/>校验 → 事件"]
+        V["build_player_view<br/>按座位脱敏"]
+        L["public_log<br/>丢掉秘密事件"]
+    end
+
+    subgraph AI["AI 座位（后台线程）"]
+        O["build_observation"]
+        D["驱动：Claude / DeepSeek /<br/>本机 Claude Code / Codex"]
+        C["decision_from_data<br/>to_action"]
+        B["table_bot<br/>回退"]
+    end
+
+    DB[("SQLite / PostgreSQL<br/>events · rooms · thoughts · turns")]
+
+    UI -- "动作 + expected_version" --> R --> S --> A
+    A -- "事件" --> DB
+    DB -- "重放" --> S
+    S --> V --> R -- "GameOut（含公开记录）" --> PB --> UI
+    S -- "轮到 AI" --> O --> D --> C --> A
+    D -. "超时 / 坏输出 / 拒答" .-> B --> A
+    V --> O
+    L --> O
+    O & D & C -- "回合记录" --> DB
+```
+
+| 边界 | 过去的东西 | 守门的代码 |
+| --- | --- | --- |
+| 状态 → 浏览器 | 只有这个座位的视图（观战者和结束后才有全部身份） | `views.py`、`schemas.py` |
+| 状态 → 模型 | 该座位的视图 + 公开记录 + 自己的笔记 | `contract.py: build_observation` |
+| 模型 → 引擎 | 一个动作提议，必须在 `legal_actions` 里 | `to_action`，引擎再校验一次 |
+| 引擎 → 数据库 | 事件，`(game_id, version)` 主键 | `storage/games.py` |
 
 ## 1. 规则引擎
 

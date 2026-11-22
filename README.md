@@ -1,14 +1,65 @@
 # Avalon AI Game Master
 
-一个用于训练完整软件工程链路的阿瓦隆项目：React/TypeScript 前端、FastAPI 后端、PostgreSQL、确定性规则引擎，以及受限工具调用的 AI 主持和 AI 玩家。支持官方 5–10 人，以及自定的 11–12 人扩展规则；多人联机暂缓。
+**一个人也能打的阿瓦隆：真人和多个大模型同桌，规则由确定性引擎裁决，AI 只能提出合法动作；每一局都能从头回放，看清每个模型当时看到了什么、想了什么、说了什么。**
 
-当前阶段：v0.4 持久化已实现——一名真人加机器人，在浏览器里打完一局官方 5–10 人阿瓦隆；对局以事件日志存进 PostgreSQL，后端重启后刷新页面能回到同一局。v0.5 上线暂时跳过；v0.6 AI 已接进对局：建房时可以把席位交给模型、打开 AI 主持（需要服务器配置模型，见下）；v0.7 评测的用例、运行器和结构化日志已完成；v0.8 把界面改成圆桌，加入了轮流发言，补位的机器人会推理、会说理由。v0.9 每个座位可以选不同的模型并观战；v0.10 加入回放和 11–12 人扩展规则。**还没有用 Claude 或 DeepSeek 的密钥调用过模型**；评测数字来自本机 Codex，见 [`docs/evidence/agent-evaluation.md`](docs/evidence/agent-evaluation.md)。
+React + TypeScript 前端 · FastAPI 后端 · 事件溯源（SQLite / PostgreSQL）· Claude / DeepSeek / 本机 Claude Code / 本机 Codex 四种模型驱动 · 181 个评测用例
+
+## 解决什么问题
+
+| 问题 | 这里的做法 |
+| --- | --- |
+| 阿瓦隆要 5–12 个人，凑不齐 | 空座由会推理的机器人或大模型补上；也可以只看 AI 互打 |
+| 让大模型当裁判不可靠：会被说服、会泄密、同一局面两种裁决 | 规则只在纯 Python 引擎里；模型只拿到自己座位能看到的东西，只能从合法动作里选（[ADR 0001](docs/adr/0001-the-model-never-owns-the-rules.md)） |
+| 模型会超时、乱答、被别人的发言带偏 | 结构化输出 + 严格校验 + 一次带原因的重试，再不行由机器人代打，界面上标出来（[ADR 0003](docs/adr/0003-least-privilege-agents-with-a-fallback.md)） |
+| AI 为什么这么打，事后看不见 | 只存事件，状态靠重放；每个模型回合的输入、回答、被拒原因都存下来，回放时逐步展示（[ADR 0002](docs/adr/0002-an-event-log-for-replay-and-concurrency.md)） |
+
+## 能做什么
+
+| 功能 | 说明 |
+| --- | --- |
+| 单人对局 | 你和 4–11 个 AI 同桌，圆桌界面，提名 → 轮流发言 → 投票 → 任务 → 刺杀 |
+| 每个座位选模型 | 内置机器人、Claude（API）、DeepSeek（API）、本机 Claude Code、本机 Codex；12 个有性格的角色 |
+| 观战 | 全部座位由 AI 打，你看到所有身份和每个 AI 的“心声” |
+| 回放 | 结束的对局从发牌开始重放，可暂停、单步、拖进度、调速；每一步下面是背后的模型回合 |
+| 5–12 人 | 官方 5–10 人规则，加自定的 11–12 人扩展规则 |
+| AI 主持 | 事实句来自模板，模型只配语气和一句氛围话，对局中不许提角色名 |
+| 朗读 | 浏览器自带的语音念出每句发言，每个角色音高语速不同 |
+
+## 关键数字
+
+所有数字的来源和复现命令见 [`docs/evidence/resume-metrics.md`](docs/evidence/resume-metrics.md)。
+
+| 指标 | 数值 |
+| --- | --- |
+| 测试 | 后端 850 个（覆盖率 98%），前端 125 个；CI 约 3 分钟 |
+| 故意捣乱的替身模型，141 个回合 | 最终动作 100% 合法，发给模型的秘密 0 |
+| 本机 Codex，149 个玩家用例 | 最终动作 100% 合法，首答 98.7% 合法，越权 0%，发言注入 8/8 没被带偏，P50 6.6 秒 |
+| 本机 Codex，32 个主持用例 | 事实句、规则提示、角色名三项检查 100% 通过 |
+| 机器人互打，好人胜率 | 5–12 人 10%–41%（邪恶方偏强，见评测文档） |
+
+还没有的：在线 Demo（部署暂缓）、真人试玩反馈、Claude / DeepSeek 的实测数字（需要付费密钥）、多人联机。
+
+## 架构
+
+```mermaid
+flowchart LR
+    UI["浏览器<br/>大厅 · 圆桌 · 回放"] -- "动作 + expected_version" --> API["FastAPI<br/>GameService"]
+    API --> ENG["规则引擎<br/>apply_action"]
+    ENG -- "事件" --> DB[("事件日志<br/>SQLite / PostgreSQL")]
+    DB -- "重放" --> API
+    API -- "按座位脱敏的视图<br/>+ 公开记录" --> UI
+    API -- "轮到 AI：只给该座位的视图" --> AG["AI 座位<br/>Claude · DeepSeek ·<br/>Claude Code · Codex"]
+    AG -- "合法动作提议" --> ENG
+    AG -. "失败" .-> BOT["机器人代打"] --> ENG
+```
+
+完整的数据流和信任边界见 [`docs/architecture.md`](docs/architecture.md) 第 0 节；威胁和对策见 [`docs/threat-model.md`](docs/threat-model.md)。
 
 ## 从这里开始
 
-1. 阅读 [`docs/roadmap.md`](docs/roadmap.md)，确认当前版本和验收标准。
-2. 阅读 [`docs/getting-started.md`](docs/getting-started.md)，了解 AI 五等级和文件职责。
-3. 按下面的“本地运行”把环境跑通。
+1. 按下面的“本地运行”把后端和前端跑起来，打开 <http://localhost:5173>，选“观战”看一局 AI 互打，结束后点“从头回放”。
+2. 读 [`docs/adr/`](docs/adr/README.md) 里的三篇设计决策。
+3. 版本历史见 [`CHANGELOG.md`](CHANGELOG.md)，后续计划见 [`docs/roadmap.md`](docs/roadmap.md)。
 
 ## 本地运行
 
@@ -77,7 +128,7 @@ cd apps/api
 
 ## 评测
 
-173 个固定用例（玩家决策 141、主持 32）加整局对比，全部可以不花钱地跑一遍来检查管线：
+181 个固定用例（玩家决策 149、主持 32）加整局对比，全部可以不花钱地跑一遍来检查管线：
 
 ```powershell
 cd apps/api
@@ -90,7 +141,8 @@ cd apps/api
 | 会推理的机器人互打，好人胜率（每种人数 500 局） | 5 人 35.6%，6 人 24.6%，7 人 13.8%，8 人 14.4%，9 人 20.6%，10 人 16.6% |
 | 故意捣乱的替身模型，141 个回合里最终动作合法 | 141 / 141（其中 65.2% 靠回退） |
 | 同一次运行里发给模型的秘密 | 0 |
-| Claude 的合法率、延迟、成本、胜率 | 还没跑，需要密钥 |
+| 本机 Codex：149 个玩家用例最终动作合法 / 首答合法 / 越权 | 100% / 98.7% / 0%（`--provider codex`，用 ChatGPT 额度） |
+| Claude、DeepSeek 的合法率、延迟、成本、胜率 | 还没跑，需要付费密钥 |
 
 怎么读这些数字、用例怎么来的、哪些没覆盖，见 [`docs/evidence/agent-evaluation.md`](docs/evidence/agent-evaluation.md)。
 
@@ -101,7 +153,10 @@ cd apps/api
 | 文档 | 用途 |
 | --- | --- |
 | [`docs/roadmap.md`](docs/roadmap.md) | 版本顺序、范围、验收标准；顺序和范围以它为准 |
-| [`docs/architecture.md`](docs/architecture.md) | 规则引擎、单人对局后端和前端的模块、状态图、接口、可见性规则 |
+| [`docs/architecture.md`](docs/architecture.md) | 数据流总览、规则引擎、前后端模块、状态图、接口、可见性规则、回放 |
+| [`docs/adr/`](docs/adr/README.md) | 三篇设计决策记录：模型不拥有规则、事件日志、AI 最小权限与回退 |
+| [`docs/evidence/resume-metrics.md`](docs/evidence/resume-metrics.md) | 每个对外数字的来源和复现命令，以及哪些不能说 |
+| [`CHANGELOG.md`](CHANGELOG.md) | 每个版本做了什么 |
 | [`docs/database.md`](docs/database.md) | 表结构、ER 图、事件追加的事务与乐观并发、五条查询 |
 | [`docs/threat-model.md`](docs/threat-model.md) | AI 玩家和 AI 主持的信任边界、威胁、对策和对应测试 |
 | [`docs/evidence/agent-evaluation.md`](docs/evidence/agent-evaluation.md) | 评测用例、指标定义、基线数字、失败样例、人工标注方法 |
