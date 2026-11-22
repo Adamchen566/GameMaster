@@ -117,6 +117,46 @@ export interface Speech {
   suspects: string[];
 }
 
+/** One thing that happened in the open. `version` is the game's version after it. */
+export type LogEntry =
+  | { version: number; kind: "mission_started"; mission: number; leader: string }
+  | {
+      version: number;
+      kind: "team_proposed";
+      mission: number;
+      proposal: number;
+      leader: string;
+      team: string[];
+    }
+  | {
+      version: number;
+      kind: "speech";
+      mission: number;
+      proposal: number;
+      player: string;
+      text: string;
+      suspects: string[];
+    }
+  | {
+      version: number;
+      kind: "team_vote";
+      mission: number;
+      proposal: number;
+      approved: boolean;
+      approvals: string[];
+      rejections: string[];
+    }
+  | {
+      version: number;
+      kind: "mission_result";
+      mission: number;
+      outcome: "success" | "fail";
+      fail_votes: number;
+    }
+  | { version: number; kind: "assassination_started"; assassin: string }
+  | { version: number; kind: "assassination"; assassin: string; target: string }
+  | { version: number; kind: "game_finished"; winner: Alignment; reason: WinReason };
+
 export type ActionType =
   | "start_game"
   | "propose_team"
@@ -138,6 +178,8 @@ export interface Game {
   room_code: string;
   gm: GmMode;
   announcements: Announcement[];
+  /** The public record, oldest first. The table replays it step by step. */
+  log: LogEntry[];
   ai_usage: AiUsage;
   version: number;
   phase: Phase;

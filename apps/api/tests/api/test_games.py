@@ -301,3 +301,28 @@ def test_openapi_document_lists_the_game_endpoints(backend: Backend) -> None:
     paths = backend.client.get("/openapi.json").json()["paths"]
 
     assert set(paths) >= {"/health", "/rooms", "/games/{game_id}", "/games/{game_id}/actions"}
+
+
+def test_the_game_carries_the_public_record_for_the_client_to_replay(backend: Backend) -> None:
+    seat = start_game(backend)
+    game = seat.game
+    log = game["log"]
+
+    versions = [entry["version"] for entry in log]
+    assert versions == sorted(set(versions))
+    assert versions[-1] <= game["version"]
+    assert log[0]["kind"] == "mission_started"
+    # Only what is said out loud: never the deal, a single ballot or a mission card.
+    assert {entry["kind"] for entry in log} <= {
+        "mission_started",
+        "team_proposed",
+        "speech",
+        "team_vote",
+        "mission_result",
+        "assassination_started",
+        "assassination",
+        "game_finished",
+    }
+    assert "role" not in str(log)
+    spoken = [entry["player"] for entry in log if entry["kind"] == "speech"]
+    assert spoken == [speech["player_id"] for speech in game["speeches"]]

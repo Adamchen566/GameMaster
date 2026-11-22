@@ -185,6 +185,8 @@ class GameOut(BaseModel):
     room_code: str
     gm: str
     announcements: list[AnnouncementOut]
+    log: list[dict[str, object]]
+    """The public record of the game, oldest first: proposals, speeches, vote and mission results."""
     ai_usage: AiUsageOut
     version: int
     phase: str
@@ -231,6 +233,7 @@ class GameOut(BaseModel):
                 )
                 for item in snapshot.announcements
             ],
+            log=[entry.to_json() for entry in snapshot.log],
             ai_usage=AiUsageOut(
                 calls=snapshot.usage.calls,
                 input_tokens=snapshot.usage.input_tokens,
