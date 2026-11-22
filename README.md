@@ -2,7 +2,7 @@
 
 一个用于训练完整软件工程链路的阿瓦隆项目：React/TypeScript 前端、FastAPI 后端、PostgreSQL、确定性规则引擎，以及受限工具调用的 AI 主持和 AI 玩家。当前路线先做官方 5–10 人的单人对 AI 闭环；多人联机和 11–12 人扩展规则暂缓。
 
-当前阶段：v0.4 持久化已实现——一名真人加机器人，在浏览器里打完一局官方 5–10 人阿瓦隆；对局以事件日志存进 PostgreSQL，后端重启后刷新页面能回到同一局。v0.5 上线暂时跳过；v0.6 AI 已接进对局：建房时可以把席位交给模型、打开 AI 主持（需要服务器配置模型，见下）；还没有用真实密钥跑过。
+当前阶段：v0.4 持久化已实现——一名真人加机器人，在浏览器里打完一局官方 5–10 人阿瓦隆；对局以事件日志存进 PostgreSQL，后端重启后刷新页面能回到同一局。v0.5 上线暂时跳过；v0.6 AI 已接进对局：建房时可以把席位交给模型、打开 AI 主持（需要服务器配置模型，见下）；v0.7 评测的用例、运行器和结构化日志已完成。**还没有用真实密钥调用过模型**，所以下面的数字里没有 Claude。
 
 ## 从这里开始
 
@@ -66,6 +66,26 @@ cd apps/api
 .\.venv\Scripts\python.exe -m app.game.simulate --players 7 --seed 42
 ```
 
+## 评测
+
+141 个固定用例（玩家决策 109、主持 32）加整局对比，全部可以不花钱地跑一遍来检查管线：
+
+```powershell
+cd apps/api
+.\.venv\Scripts\python.exe -m app.evals.run --provider hostile --out eval-out
+```
+
+| 实测数字（2026-11-22） | 值 |
+| --- | --- |
+| 随机 bot 对随机 bot，好人胜率（每种人数 2000 局） | 5 人 10.3%，6 人 12.0%，7 人 11.2%，8 人 7.3%，9 人 12.4%，10 人 5.9% |
+| 故意捣乱的替身模型，109 个回合里最终动作合法 | 109 / 109（其中 65.1% 靠回退到随机 bot） |
+| 同一次运行里发给模型的秘密 | 0 |
+| Claude 的合法率、延迟、成本、胜率 | 还没跑，需要密钥 |
+
+怎么读这些数字、用例怎么来的、哪些没覆盖，见 [`docs/evidence/agent-evaluation.md`](docs/evidence/agent-evaluation.md)。
+
+后端日志是每行一个 JSON 对象，带 `request_id`、`game_id`、`event_id`；想在终端里读纯文本就设 `LOG_FORMAT=text`。
+
 ## 文档
 
 | 文档 | 用途 |
@@ -74,6 +94,7 @@ cd apps/api
 | [`docs/architecture.md`](docs/architecture.md) | 规则引擎、单人对局后端和前端的模块、状态图、接口、可见性规则 |
 | [`docs/database.md`](docs/database.md) | 表结构、ER 图、事件追加的事务与乐观并发、五条查询 |
 | [`docs/threat-model.md`](docs/threat-model.md) | AI 玩家和 AI 主持的信任边界、威胁、对策和对应测试 |
+| [`docs/evidence/agent-evaluation.md`](docs/evidence/agent-evaluation.md) | 评测用例、指标定义、基线数字、失败样例、人工标注方法 |
 | [`docs/superpowers/plans/2026-09-15-avalon-ai-game-master.md`](docs/superpowers/plans/2026-09-15-avalon-ai-game-master.md) | 每个 Task 的详细步骤、接口和 AI 等级 |
 | [`docs/getting-started.md`](docs/getting-started.md) | AI 五等级规则、目录结构、文件职责 |
 | [`docs/learning-log.md`](docs/learning-log.md) | 每个切片的本人复盘 |

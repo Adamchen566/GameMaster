@@ -310,3 +310,47 @@ PlayerView ──build_observation──> 观察(JSON) ──> ModelClient ─�
 | `LLM_PLAYER_TIMEOUT_SECONDS` / `LLM_GM_TIMEOUT_SECONDS` | `8` / `3` | |
 | `LLM_INPUT_PRICE_PER_MTOK` / `LLM_OUTPUT_PRICE_PER_MTOK` | 不设 | 两个都设了才显示估算成本（美元 / 百万 token） |
 
+## 6. 评测和日志
+
+### 6.1 评测
+
+```text
+evals/cases/*.jsonl ──resolve──> 真实局面（由 seed 重放得到）
+        │                              │
+        │                 LlmPlayer / Narrator（和线上同一份代码）
+        │                              │
+        │                 RecordingModel 记下每次调用：问了什么、答了什么、多久、多少 token
+        │                              ▼
+        └────────────> 评分：模型做了什么  vs  对局接受了什么 ──> report.md / results.json / gm_labels.csv
+```
+
+| 模块 | 职责 |
+| --- | --- |
+| `app/evals/cases.py` | 用例格式；把“seed + 第几个事件”还原成局面；攻击文字放进昵称或笔记 |
+| `app/evals/build_cases.py` | 搜索随机对局生成用例文件；输出是确定的 |
+| `app/evals/models.py` | 记录器；两个不花钱的替身（合法 / 捣乱） |
+| `app/evals/player_eval.py` | 玩家决策评分；对照完整状态审计发给模型的文字 |
+| `app/evals/gm_eval.py` | 主持评分；只判服务器能判的 |
+| `app/evals/arena.py` | 整局对比：随机对随机、模型对随机 |
+| `app/evals/report.py` / `run.py` | 报告、人工标注表、命令行 |
+
+评测不走 HTTP 和数据库，直接调用 `LlmPlayer` 和 `Narrator`，所以量到的就是线上那段决策代码。用例、指标定义和数字见 [`evidence/agent-evaluation.md`](evidence/agent-evaluation.md)。
+
+### 6.2 日志
+
+每行一个 JSON 对象，三个 id 把一次请求、一局对局、一个事件串起来：
+
+| 字段 | 含义 | 来源 |
+| --- | --- | --- |
+| `request_id` | 一次 HTTP 请求 | 请求头 `X-Request-ID`（只接受 64 字以内的字母数字和 `._-`），否则生成；写回响应头 |
+| `game_id` | 一局对局 | |
+| `event_id` | `game_id:version` | 与 AI 主持去重用的键相同 |
+
+| 日志 | 什么时候 | 字段 |
+| --- | --- | --- |
+| `http_request` | 每个请求结束 | `method`、`path`、`status`、`duration_ms` |
+| `events_appended` | 每次写入事件 | `game_id`、`event_id`、`version`、`actor`、`events`（类型名列表） |
+| `ai_turn` | 每个后台 AI 回合 | `player_id`、`agent`、`source`（`model` / `fallback` / `random`）、`fallback_reason`、`duration_ms` |
+| `ai_turn_failed` / `ai_turns_did_not_settle` | 后台出错 | `game_id`，以及异常堆栈 |
+
+后台的 AI 回合和主持播报带着发起它的那次请求的 `request_id`，所以能从一次真人操作一路查到它引出的所有 AI 动作。日志不写令牌、角色、任务牌和笔记。`LOG_FORMAT=text` 改成纯文本，`LOG_LEVEL` 调级别。

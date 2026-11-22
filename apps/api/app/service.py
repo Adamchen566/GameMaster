@@ -15,6 +15,7 @@ import logging
 import random
 import secrets
 import threading
+import time
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import AbstractContextManager, nullcontext
@@ -37,6 +38,7 @@ from app.game.state import GameState
 from app.game.views import PlayerView, build_player_view
 from app.gm.narrator import Narration, Narrator
 from app.gm.templates import Language
+from app.observability import event_id, in_current_context
 from app.rooms import (
     InMemoryRoomStore,
     Room,
@@ -291,6 +293,7 @@ class GameService:
             new_events = [*events, *bot_events]
             self._games.append(room.game_id, loaded_version, new_events)
 
+        _log_events(room.game_id, loaded_version, new_events, actor=session.seat.player_id)
         self._after_append(room, state, loaded_version, new_events)
         return build_player_view(state, session.seat.player_id)
 
@@ -323,7 +326,7 @@ class GameService:
                     for entry in entries:
                         self._narrator.narrate(room.game_id, entry, names, language)
 
-                self._executor.submit(narrate)
+                self._executor.submit(in_current_context(narrate))
         self._ensure_ai_running(room, state)
 
     # --- AI turns --------------------------------------------------------------
@@ -345,17 +348,17 @@ class GameService:
             if room.game_id in self._running:
                 return
             self._running.add(room.game_id)
-        self._executor.submit(lambda: self._run_ai_turns(room))
+        self._executor.submit(in_current_context(lambda: self._run_ai_turns(room)))
 
     def _run_ai_turns(self, room: Room) -> None:
         try:
             for _ in range(MAX_AI_TURNS_PER_RUN):
                 if not self._play_one_ai_turn(room):
                     return
-            log.error("AI turns for game %s did not settle; stopping this run.", room.game_id)
+            log.error("ai_turns_did_not_settle", extra={"game_id": room.game_id})
         except Exception:
             # Nothing may be raised into the executor; the next poll starts a new run.
-            log.exception("AI turn failed for game %s", room.game_id)
+            log.exception("ai_turn_failed", extra={"game_id": room.game_id})
         finally:
             with self._running_lock:
                 self._running.discard(room.game_id)
@@ -373,7 +376,9 @@ class GameService:
 
         view = build_player_view(state, seat.player_id)
         # The slow part. No lock is held, so people can keep acting meanwhile.
+        started = time.perf_counter()
         action, after = self._decide(room, seat, view, history, before)
+        decided_ms = round((time.perf_counter() - started) * 1000, 1)
 
         with self._lock, self._transaction():
             fresh = self._games.load(game_id)
@@ -392,6 +397,19 @@ class GameService:
             if after is not None:
                 self._agent_states.put(game_id, seat.player_id, after)
 
+        log.info(
+            "ai_turn",
+            extra={
+                "game_id": game_id,
+                "event_id": event_id(game_id, new_state.version),
+                "player_id": seat.player_id,
+                "agent": _agent(seat),
+                "source": after.last_source if after is not None else "random",
+                "fallback_reason": after.last_fallback_reason if after is not None else None,
+                "duration_ms": decided_ms,
+            },
+        )
+        _log_events(game_id, fresh.version, events, actor=seat.player_id)
         self._after_append(room, new_state, fresh.version, events)
         return True
 
@@ -423,6 +441,23 @@ class GameService:
             last_source=turn.source,
             last_fallback_reason=turn.fallback_reason,
         )
+
+
+def _log_events(
+    game_id: str, version_before: int, events: Sequence[GameEvent], *, actor: str
+) -> None:
+    """One line per batch of appended events. Type names only: payloads hold secrets."""
+    version = version_before + len(events)
+    log.info(
+        "events_appended",
+        extra={
+            "game_id": game_id,
+            "event_id": event_id(game_id, version),
+            "version": version,
+            "actor": actor,
+            "events": [type(event).__name__ for event in events],
+        },
+    )
 
 
 def _names(room: Room) -> dict[str, str]:

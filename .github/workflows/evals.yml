@@ -1,0 +1,76 @@
+name: Evals
+
+# Run by hand: Actions -> Evals -> Run workflow.
+# "scripted" and "hostile" are free stand-ins that check the harness and the
+# guards. "anthropic" sends paid requests to the Claude API and needs the
+# ANTHROPIC_API_KEY repository secret.
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: Who answers the cases
+        type: choice
+        options: [scripted, hostile, random, anthropic]
+        default: hostile
+      suites:
+        description: Comma-separated suites (players, gm, arena)
+        default: players,gm,arena
+      limit:
+        description: Only the first N cases per suite (empty = all)
+        default: ""
+      model_games:
+        description: Model games per player count and side
+        default: "2"
+      confirm_cost:
+        description: Type "yes" to allow paid requests (anthropic only)
+        default: "no"
+
+permissions:
+  contents: read
+
+jobs:
+  evals:
+    name: Evaluate (${{ inputs.provider }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: apps/api
+    env:
+      PROVIDER: ${{ inputs.provider }}
+      SUITES: ${{ inputs.suites }}
+      LIMIT: ${{ inputs.limit }}
+      MODEL_GAMES: ${{ inputs.model_games }}
+      CONFIRM_COST: ${{ inputs.confirm_cost }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/api/pyproject.toml
+      - name: Install dependencies
+        run: python -m pip install -e .
+      - name: Refuse a paid run that was not confirmed
+        if: inputs.provider == 'anthropic' && inputs.confirm_cost != 'yes'
+        run: |
+          echo "::error::provider=anthropic sends paid requests. Re-run with confirm_cost=yes."
+          exit 1
+      - name: Run the evaluation
+        env:
+          ANTHROPIC_API_KEY: ${{ inputs.provider == 'anthropic' && secrets.ANTHROPIC_API_KEY || '' }}
+        run: |
+          args=(--provider "$PROVIDER" --suites "$SUITES" --model-games "$MODEL_GAMES" --out eval-out)
+          if [ -n "$LIMIT" ]; then args+=(--limit "$LIMIT"); fi
+          if [ "$PROVIDER" = "anthropic" ]; then args+=(--confirm-cost); fi
+          python -m app.evals.run "${args[@]}"
+      - name: Put the report on the run page
+        if: always()
+        run: test -f eval-out/report.md && cat eval-out/report.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep the report, raw results and the labelling sheet
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: eval-${{ inputs.provider }}-${{ github.run_id }}
+          path: apps/api/eval-out/
+          if-no-files-found: warn
