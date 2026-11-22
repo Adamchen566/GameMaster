@@ -11,11 +11,14 @@ import type {
   ServerConfig,
 } from "../../api/client";
 import { DRIVER_NAMES, DRIVER_PROBLEMS } from "../game/labels";
+import type { PastGame } from "../../session";
 import { ApiStatus } from "./ApiStatus";
 
-const PLAYER_COUNTS = [5, 6, 7, 8, 9, 10];
+const PLAYER_COUNTS = [5, 6, 7, 8, 9, 10, 11, 12];
+/** From this many players the house rules apply; the official tables stop at ten. */
+const HOUSE_RULES_FROM = 11;
 const MAX_NICKNAME_LENGTH = 20;
-const MAX_BOT_SEATS = 10;
+const MAX_BOT_SEATS = 12;
 
 const STYLES: { value: AiStyle; label: string }[] = [
   { value: "baseline", label: "均衡" },
@@ -43,9 +46,19 @@ interface LobbyPageProps {
   /** What this server can do: which models can play a seat, who sits in the bot seats. */
   config?: ServerConfig;
   onCreate: (nickname: string, playerCount: number, options: RoomOptions) => void;
+  /** Games played in this browser, newest first, to be replayed. */
+  history?: PastGame[];
+  onReplay?: (game: PastGame) => void;
 }
 
-export function LobbyPage({ creating, error, config = NO_MODELS, onCreate }: LobbyPageProps) {
+export function LobbyPage({
+  creating,
+  error,
+  config = NO_MODELS,
+  onCreate,
+  history = [],
+  onReplay = () => undefined,
+}: LobbyPageProps) {
   // Kept here, not in the reducer: a failed request must not wipe what was typed.
   const [nickname, setNickname] = useState("");
   const [playerCount, setPlayerCount] = useState(5);
@@ -137,6 +150,12 @@ export function LobbyPage({ creating, error, config = NO_MODELS, onCreate }: Lob
               </label>
             ))}
           </div>
+          {playerCount >= HOUSE_RULES_FROM && (
+            <p className="muted">
+              官方规则只到 10 人。11–12 人用扩展规则：约三分之一是邪恶方（11 人 4 个，12 人 5
+              个），每轮队伍多 1 人，后面的任务要 2 张失败牌才算失败。
+            </p>
+          )}
         </fieldset>
 
         <fieldset className="field">
@@ -267,6 +286,32 @@ export function LobbyPage({ creating, error, config = NO_MODELS, onCreate }: Lob
         </button>
       </form>
 
+      {history.length > 0 && (
+        <section className="card" aria-labelledby="history-title">
+          <h2 id="history-title">最近的对局</h2>
+          <p className="muted">记在这个浏览器里。结束的对局可以从头回放，看到每一步的身份、心声和模型的原始回答。</p>
+          <ol className="history">
+            {history.map((game) => (
+              <li key={game.gameId} className="history__game">
+                <span>
+                  <strong>{game.playerCount} 人局</strong>
+                  {game.spectate ? " · 观战" : ` · ${game.nickname}`}
+                  <span className="muted"> · {formatWhen(game.createdAt)}</span>
+                </span>
+                <button
+                  type="button"
+                  className="button button--ghost"
+                  aria-label={`回放 ${formatWhen(game.createdAt)} 的 ${game.playerCount} 人局`}
+                  onClick={() => onReplay(game)}
+                >
+                  回放
+                </button>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
       <ApiStatus />
     </main>
   );
@@ -296,4 +341,13 @@ function costNote(seats: SeatChoice[]): string {
     parts.push("本机 Codex 的座位用你的 ChatGPT 额度，每步几秒到半分钟");
   }
   return `${parts.join("；")}。`;
+}
+
+function formatWhen(iso: string): string {
+  const when = new Date(iso);
+  if (Number.isNaN(when.getTime())) {
+    return "时间未知";
+  }
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${when.getMonth() + 1}月${when.getDate()}日 ${pad(when.getHours())}:${pad(when.getMinutes())}`;
 }

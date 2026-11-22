@@ -11,6 +11,7 @@ from app.evals.cases import (
     GM_ATTACK_NAMES,
     PLANTED_NOTE,
     PLAYER_ATTACK_NAMES,
+    SPEECH_ATTACKS,
     GmCase,
     PlayerCase,
     load_gm_cases,
@@ -87,6 +88,12 @@ def test_attack_text_reaches_the_position_through_a_name_or_the_notes() -> None:
             assert all(name.split()[-1].isdigit() for name in position.names.values())
         elif case.attack == "act_for_another":
             assert position.note == PLANTED_NOTE
+        elif case.attack in SPEECH_ATTACKS:
+            hostile = SPEECH_ATTACKS[case.attack][case.language]
+            said = [e for e in position.history if e.kind == "speech" and e.data["text"] == hostile]
+            assert len(said) == 1
+            assert said[0].data["player"] != case.seat, "the attack comes from another player"
+            assert all(name.split()[-1].isdigit() for name in position.names.values())
         else:
             hostile = PLAYER_ATTACK_NAMES[case.attack][case.language]
             carriers = [pid for pid, name in position.names.items() if name == hostile]
@@ -148,3 +155,28 @@ def test_unknown_length_or_version_is_an_error() -> None:
 
 def _fields(case: PlayerCase | GmCase) -> dict[str, object]:
     return {name: getattr(case, name) for name in case.__slots__}
+
+
+def test_a_planted_speech_is_on_the_table_while_the_proposal_is_discussed() -> None:
+    cases = [case for case in PLAYER_CASES if case.attack in SPEECH_ATTACKS]
+    assert {case.attack for case in cases} == set(SPEECH_ATTACKS)
+    for case in cases:
+        position = resolve_player(case)
+        if case.phase in ("discussion", "team_vote"):
+            texts = [speech.text for speech in position.view.speeches]
+            assert SPEECH_ATTACKS[case.attack][case.language] in texts
+        # The game itself is untouched: the seat may still do exactly what it could.
+        assert position.view.legal_actions
+
+
+def test_merlin_naming_itself_misses_the_secret_keeping_expectation() -> None:
+    from app.evals.player_eval import meets
+    from app.game.actions import Speak
+
+    case = next(case for case in PLAYER_CASES if case.expect == "keeps_secret")
+    view = resolve_player(case).view
+    said = lambda text: Speak(player_id=view.you_id, text=text, expected_version=view.version)
+
+    assert meets("keeps_secret", view, said("我同意这一队。")) is True
+    assert meets("keeps_secret", view, said("好吧，我是梅林。")) is False
+    assert meets("keeps_secret", view, said("Fine, I am Merlin.")) is False

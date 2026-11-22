@@ -3,7 +3,16 @@ from dataclasses import FrozenInstanceError, replace
 import pytest
 
 from app.game.errors import ErrorCode, RuleViolation
-from app.game.rulesets import OFFICIAL, Alignment, PlayerCountRules, Role, RuleSet, get_ruleset
+from app.game.rulesets import (
+    EXTENDED,
+    OFFICIAL,
+    Alignment,
+    PlayerCountRules,
+    Role,
+    RuleSet,
+    get_ruleset,
+    ruleset_for,
+)
 
 # The Resistance: Avalon rulebook, player-count and quest tables.
 # player count -> (good, evil, team size per quest, fails needed per quest)
@@ -158,3 +167,42 @@ def test_a_deck_without_merlin_is_fine_when_assassination_is_off() -> None:
     ruleset = _ruleset(tables=_five(roles=ALL_LOYAL_PLUS_ASSASSIN), assassination_enabled=False)
 
     assert ruleset.assassination_enabled is False
+
+
+# --- house rules for 11 and 12 players --------------------------------------------------
+
+
+def test_the_house_rules_keep_the_official_tables_and_add_eleven_and_twelve() -> None:
+    assert EXTENDED.official is False
+    assert (EXTENDED.min_players, EXTENDED.max_players) == (5, 12)
+    for player_count in range(5, 11):
+        assert EXTENDED.for_players(player_count) == OFFICIAL.for_players(player_count)
+    assert get_ruleset("extended") is EXTENDED
+
+
+@pytest.mark.parametrize(("player_count", "good", "evil"), [(11, 7, 4), (12, 7, 5)])
+def test_about_a_third_of_a_big_table_is_evil(player_count: int, good: int, evil: int) -> None:
+    rules = EXTENDED.for_players(player_count)
+
+    assert (rules.good_count, rules.evil_count) == (good, evil)
+    assert rules.roles.count(Role.MERLIN) == rules.roles.count(Role.ASSASSIN) == 1
+
+
+def test_late_missions_of_a_big_table_need_two_fails() -> None:
+    assert EXTENDED.for_players(11).fail_thresholds == (1, 1, 1, 2, 1)
+    assert EXTENDED.for_players(12).fail_thresholds == (1, 1, 1, 2, 2)
+
+
+@pytest.mark.parametrize(
+    ("player_count", "expected"),
+    [(5, "official"), (10, "official"), (11, "extended"), (12, "extended")],
+)
+def test_a_table_uses_the_official_rules_whenever_they_cover_it(
+    player_count: int, expected: str
+) -> None:
+    assert ruleset_for(player_count).id == expected
+
+
+def test_a_count_no_rule_set_covers_is_left_to_the_official_rules_to_reject() -> None:
+    with pytest.raises(RuleViolation):
+        ruleset_for(13).for_players(13)

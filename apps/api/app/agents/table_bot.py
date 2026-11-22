@@ -135,7 +135,7 @@ def chance_of_evil(view: PlayerView, table: Table, *, innocent: str) -> dict[str
     player's chance is the share of that weight in which they are evil.
     """
     others = [player.id for player in view.players if player.id != innocent]
-    evil_count = math.ceil(len(view.players) / 3)
+    evil_count = view.evil_count
     finished = [mission for mission in view.missions if mission.outcome is not None]
     totals = dict.fromkeys(others, 0.0)
     weight_sum = 0.0
@@ -196,7 +196,7 @@ class _Mind:
         self.public = read_table(view, history)
         # A good player knows one more thing than the table: it is not evil itself.
         self.odds = {} if self.evil else chance_of_evil(view, self.public, innocent=self.me)
-        self.starting_odds = math.ceil(len(view.players) / 3) / (len(view.players) - 1)
+        self.starting_odds = view.evil_count / (len(view.players) - 1)
         mission, proposal = view.current_mission_number or 0, view.proposal_number or 0
         # Anything that must agree between a speech and the vote that follows it.
         # Drawn up front, so the vote cannot drift from the speech as more is said.
@@ -206,6 +206,8 @@ class _Mind:
         self.frame = steady.random() < EVIL_FRAME_RATE
         self.frame_pick = steady.random()
         self.idle_doubt = steady.random() < IDLE_DOUBT_RATE
+        # Picks the wording only, so it never changes what the bot decides.
+        self.voice = random.Random(f"{salt}:{self.me}:{mission}:{proposal}:voice")
 
     # --- What this seat believes -------------------------------------------------
 
@@ -337,6 +339,102 @@ class _Mind:
 
 # --- Speaking ---------------------------------------------------------------------
 
+_LINES: dict[str, dict[str, tuple[str, ...]]] = {
+    "lead_blind": {
+        "zh": (
+            "第一轮没有任何信息，我先选 {team} 试一队。",
+            "现在谁都看不清，我带 {team} 出发，拿结果说话。",
+            "先试一队：{team}。就算失败，我们也有线索了。",
+            "没有依据可言，我选 {team}，大家别太紧张。",
+        ),
+        "en": (
+            "There is nothing to go on yet, so I am trying {team}.",
+            "Nobody can see anything yet. I will take {team} and let the result speak.",
+            "A first try: {team}. If it fails, at least we learn something.",
+        ),
+    },
+    "lead": {
+        "zh": (
+            "我选 {team}，他们是目前我最放心的人。",
+            "按目前的记录，{team} 最干净，我就带他们。",
+            "这一队我选 {team}，有疑问的人我都没带。",
+            "我带 {team}。看了前面几轮，这是我能凑出的最稳的一队。",
+        ),
+        "en": (
+            "I am taking {team}: the players I trust most right now.",
+            "On the record so far, {team} look cleanest, so they go.",
+            "{team}. I left out everyone I have doubts about.",
+        ),
+    },
+    "approve_blind": {
+        "zh": (
+            "还没有任何线索，我先让这队出发，看结果再说。",
+            "第一队没什么好挑的，我赞成，看看结果。",
+            "现在反对也说不出理由，我投赞成。",
+            "先让他们去吧，结果出来再分析。",
+        ),
+        "en": (
+            "Nothing to judge by yet. I will let this team go and see what happens.",
+            "There is nothing to pick at in a first team. I approve.",
+            "I have no reason to object yet, so I approve.",
+        ),
+    },
+    "approve": {
+        "zh": (
+            "这支队伍我能接受，会投赞成。",
+            "这一队看着没问题，我支持。",
+            "队里没有我怀疑的人，赞成。",
+            "我没意见，让他们出发吧。",
+            "这队我放心，投赞成。",
+        ),
+        "en": (
+            "I can live with this team. I will approve.",
+            "This team looks fine to me. I support it.",
+            "Nobody I suspect is on it. Approve.",
+        ),
+    },
+    "reject_because": {
+        "zh": (
+            "我会反对：队里有 {who}，{why}。",
+            "{who} 在队里我不放心，{why}，我投反对。",
+            "这队我不同意，{who} {why}，不能再让这个人上车。",
+            "换掉 {who} 我就赞成。{who} {why}。",
+        ),
+        "en": (
+            "I will reject: {who} is on it and {why}.",
+            "Not with {who} on it: {who} {why}. I reject.",
+            "Swap out {who} and I will approve. {who} {why}.",
+        ),
+    },
+    "reject": {
+        "zh": (
+            "这支队伍我还不放心，想再看一轮，会投反对。",
+            "说不上哪里不对，但这队我想先反对一次。",
+            "我先投反对，想听听下一位队长怎么排。",
+            "这一队我心里没底，反对。",
+        ),
+        "en": (
+            "I am not comfortable with this team yet. I will reject.",
+            "I cannot say exactly why, but I want to turn this one down.",
+            "I will reject and see how the next leader builds a team.",
+        ),
+    },
+    "suspect": {
+        "zh": (
+            "我怀疑 {who}。",
+            "另外我在盯着 {who}。",
+            "顺便说一句，{who} 让我很在意。",
+            "我目前最怀疑的是 {who}。",
+        ),
+        "en": (
+            "I suspect {who}.",
+            "I am also keeping an eye on {who}.",
+            "And {who} worries me.",
+        ),
+    },
+}
+"""Ways of saying each stance. The seat and the proposal pick one, so a table does not echo."""
+
 
 def _reason(key: str, language: Language) -> str:
     kind, _, number = key.partition(":")
@@ -369,51 +467,30 @@ def _say(mind: _Mind, names: Mapping[str, str], language: Language) -> Speak:
             return "我说不出证据，只是直觉" if zh else "no proof, only a feeling"
         return _reason(reasons[0], language)
 
+    def line(kind: str, **values: str) -> str:
+        options = _LINES[kind]["zh" if zh else "en"]
+        return mind.voice.choice(options).format(**values)
+
     parts: list[str] = []
     if view.you_id == view.leader_id:
         chosen = comma.join(name(member) for member in team)
-        if not mind.public.votes:
-            parts.append(
-                f"第一轮没有任何信息，我先选 {chosen} 试一队。"
-                if zh
-                else f"There is nothing to go on yet, so I am trying {chosen}."
-            )
-        else:
-            parts.append(
-                f"我选 {chosen}，他们是目前我最放心的人。"
-                if zh
-                else f"I am taking {chosen}: the players I trust most right now."
-            )
+        parts.append(line("lead_blind" if not mind.public.votes else "lead", team=chosen))
     elif stance.approve and not mind.public.votes:
-        parts.append(
-            "还没有任何线索，我先让这队出发，看结果再说。"
-            if zh
-            else "Nothing to judge by yet. I will let this team go and see what happens."
-        )
+        parts.append(line("approve_blind"))
     elif stance.approve:
-        parts.append(
-            "这支队伍我能接受，会投赞成。" if zh else "I can live with this team. I will approve."
-        )
+        parts.append(line("approve"))
     elif stance.worry is not None:
         worry = stance.worry
-        parts.append(
-            f"我会反对：队里有 {name(worry)}，{why(worry)}。"
-            if zh
-            else f"I will reject: {name(worry)} is on it and {why(worry)}."
-        )
+        parts.append(line("reject_because", who=name(worry), why=why(worry)))
     else:
-        parts.append(
-            "这支队伍我还不放心，想再看一轮，会投反对。"
-            if zh
-            else "I am not comfortable with this team yet. I will reject."
-        )
+        parts.append(line("reject"))
 
     others = [pid for pid in stance.voiced if pid != stance.worry]
     if others:
         listed = comma.join(
             f"{name(pid)}（{why(pid)}）" if zh else f"{name(pid)} ({why(pid)})" for pid in others
         )
-        parts.append(f"我怀疑 {listed}。" if zh else f"I suspect {listed}.")
+        parts.append(line("suspect", who=listed))
 
     suspects = tuple(dict.fromkeys(pid for pid in (stance.worry, *stance.voiced) if pid))[:3]
     return Speak(

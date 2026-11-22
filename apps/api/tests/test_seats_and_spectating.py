@@ -99,7 +99,7 @@ def play_out(game: GameService, created: CreatedRoom) -> None:
 
 
 def test_every_bot_seat_of_the_largest_table_has_a_persona() -> None:
-    assert len(BOT_NAMES) == len(set(BOT_NAMES)) == 10
+    assert len(BOT_NAMES) == len(set(BOT_NAMES)) == 12
     assert all(persona_for(name) is not None for name in BOT_NAMES)
     assert persona_for("Adam") is None
 
@@ -446,3 +446,60 @@ def test_the_token_ceiling_holds_back_a_paid_api_but_never_a_local_client() -> N
     local = [turn for turn in turns if turn.driver == "codex"]
     assert any(turn.fallback_reason == "budget_exhausted" for turn in paid)
     assert local and all(turn.source == "model" for turn in local)
+
+
+# --- eleven and twelve at the table -----------------------------------------------------
+
+
+@pytest.mark.parametrize("player_count", [11, 12])
+def test_a_big_table_is_played_under_the_house_rules_to_the_end(player_count: int) -> None:
+    game = service()
+    created = game.create_room("Adam", player_count, spectate=True)
+    start(game, created)
+
+    view = game.view(created.session)
+    assert view.ruleset_id == "extended"
+    assert view.evil_count == (4 if player_count == 11 else 5)
+    assert view.phase is Phase.FINISHED
+    seats = created.session.room.seats
+    assert len({seat.name for seat in seats}) == len(seats) == player_count
+
+
+def test_built_in_bots_do_not_all_say_the_same_thing() -> None:
+    game = service()
+    created = game.create_room("Adam", 10, spectate=True)
+    start(game, created)
+
+    speeches = [
+        str(entry.data["text"])
+        for entry in game.snapshot(created.session).log
+        if entry.kind == "speech"
+    ]
+    assert len(speeches) > 20
+    # The decision decides the sentence's meaning; its wording varies by seat and proposal.
+    assert len(set(speeches)) > len(speeches) / 2
+
+
+def test_a_replay_carries_every_model_turn_with_what_the_model_saw_and_said() -> None:
+    from app.api.schemas import ReplayOut, TurnOut
+
+    game = service(codex=NamedModel("codex"))
+    created = game.create_room(
+        "Adam", 5, seats=["codex", "bot", "bot", "bot", "bot"], spectate=True
+    )
+    start(game, created)
+
+    turns = [TurnOut.from_record(turn) for turn in game.turns(created.session.room.game_id)]
+    assert turns and all(turn.player_id == "p1" and turn.driver == "codex" for turn in turns)
+    first = turns[0]
+    assert first.observation is not None and "you" in first.observation
+    assert "answer" in first.exchanges[0]
+    # The whole replay goes over the wire as JSON.
+    replay = ReplayOut.model_validate({"game": _game_out(game, created), "turns": turns})
+    assert replay.model_dump_json()
+
+
+def _game_out(game: GameService, created: CreatedRoom) -> object:
+    from app.api.schemas import GameOut
+
+    return GameOut.from_snapshot(game.snapshot(created.session), created.session.room)

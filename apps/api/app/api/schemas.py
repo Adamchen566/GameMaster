@@ -6,12 +6,13 @@ never from `GameState`, so nothing a player may not know can reach the wire.
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, StrictBool, StringConstraints
 
 from app.agents.personas import persona_for
 from app.agents.state import AgentState
+from app.agents.turns import TurnRecord
 from app.game.actions import (
     Action,
     Assassinate,
@@ -224,6 +225,9 @@ class GameOut(BaseModel):
     proposal_number: int | None
     max_rejected_proposals: int
     missions_to_win: int
+    ruleset_id: str
+    """"official" for 5-10 players, "extended" for the 11-12 house rules."""
+    evil_count: int
     proposed_team: list[str]
     speeches: list[SpeechOut]
     """What has been said about the latest proposal, in speaking order."""
@@ -312,6 +316,8 @@ class GameOut(BaseModel):
             proposal_number=view.proposal_number,
             max_rejected_proposals=view.max_rejected_proposals,
             missions_to_win=view.missions_to_win,
+            ruleset_id=view.ruleset_id,
+            evil_count=view.evil_count,
             proposed_team=list(view.proposed_team),
             speeches=[
                 SpeechOut(
@@ -403,6 +409,45 @@ class RoomCreatedOut(BaseModel):
     player_id: str
     token: str
     game: GameOut
+
+
+class TurnOut(BaseModel):
+    """One turn a model-driven seat played: what it was shown and what it answered."""
+
+    version: int
+    player_id: str
+    driver: str
+    source: str
+    fallback_reason: str | None
+    attempts: int
+    duration_ms: float
+    input_tokens: int
+    output_tokens: int
+    observation: dict[str, Any] | None
+    exchanges: list[dict[str, Any]]
+
+    @classmethod
+    def from_record(cls, record: TurnRecord) -> TurnOut:
+        return cls(
+            version=record.version,
+            player_id=record.player_id,
+            driver=record.driver,
+            source=record.source,
+            fallback_reason=record.fallback_reason,
+            attempts=record.attempts,
+            duration_ms=record.duration_ms,
+            input_tokens=record.input_tokens,
+            output_tokens=record.output_tokens,
+            observation=None if record.observation is None else dict(record.observation),
+            exchanges=[dict(exchange) for exchange in record.exchanges],
+        )
+
+
+class ReplayOut(BaseModel):
+    """A finished game with everything behind it, to be replayed step by step."""
+
+    game: GameOut
+    turns: list[TurnOut]
 
 
 class ErrorOut(BaseModel):

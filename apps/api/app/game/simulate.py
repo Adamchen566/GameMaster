@@ -39,7 +39,7 @@ from app.game.events import (
     TeamRejected,
     TeamVoteCast,
 )
-from app.game.rulesets import OFFICIAL, Alignment, Role, RuleSet
+from app.game.rulesets import Alignment, Role, RuleSet, ruleset_for
 from app.game.state import GameState, Phase
 
 APPROVAL_RATE = 0.6
@@ -83,12 +83,14 @@ def next_action(state: GameState, rng: random.Random) -> Action:
             raise ValueError(f"No player can act in phase '{state.phase}'.")
 
 
-def play_random_game(*, player_count: int, seed: int, ruleset: RuleSet = OFFICIAL) -> SimulatedGame:
+def play_random_game(
+    *, player_count: int, seed: int, ruleset: RuleSet | None = None
+) -> SimulatedGame:
     rng = random.Random(seed)
     player_ids = tuple(f"p{number}" for number in range(1, player_count + 1))
     initial = new_game(
         game_id=f"sim-{player_count}-{seed}",
-        ruleset=ruleset,
+        ruleset=ruleset or ruleset_for(player_count),
         player_ids=player_ids,
         host_id=player_ids[0],
     )

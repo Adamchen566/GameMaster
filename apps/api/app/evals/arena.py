@@ -23,7 +23,7 @@ from app.game.actions import StartGame
 from app.game.engine import apply_action, new_game
 from app.game.events import GameEvent
 from app.game.public_log import public_log
-from app.game.rulesets import OFFICIAL, Alignment
+from app.game.rulesets import Alignment, ruleset_for
 from app.game.state import Phase
 from app.game.views import build_player_view
 
@@ -70,7 +70,10 @@ def play_match(
     player_ids = tuple(f"p{number}" for number in range(1, player_count + 1))
     game_id = f"arena-{player_count}-{seed}-{matchup.good}-{matchup.evil}"
     state = new_game(
-        game_id=game_id, ruleset=OFFICIAL, player_ids=player_ids, host_id=player_ids[0]
+        game_id=game_id,
+        ruleset=ruleset_for(player_count),
+        player_ids=player_ids,
+        host_id=player_ids[0],
     )
     events: list[GameEvent]
     state, events = apply_action(state, StartGame(player_id=player_ids[0], seed=seed))

@@ -242,6 +242,10 @@ export interface Game {
   proposal_number: number | null;
   max_rejected_proposals: number;
   missions_to_win: number;
+  /** "official" for 5-10 players, "extended" for the 11-12 house rules. */
+  ruleset_id: string;
+  /** How many players are evil. Everyone at the table knows this. */
+  evil_count: number;
   proposed_team: string[];
   /** Speeches about the latest proposal, in speaking order. */
   speeches: Speech[];
@@ -257,6 +261,35 @@ export interface Game {
   winner: Alignment | null;
   win_reason: WinReason | null;
   legal_actions: LegalAction[];
+}
+
+/** One model call within a turn: the answer, why the game turned it down, or the error. */
+export interface Exchange {
+  answer?: Record<string, unknown>;
+  rejected?: string;
+  error?: string;
+  detail?: string;
+}
+
+/** One turn a model-driven seat played, with what it was shown and what it answered. */
+export interface Turn {
+  version: number;
+  player_id: string;
+  driver: string;
+  source: "model" | "fallback";
+  fallback_reason: string | null;
+  attempts: number;
+  duration_ms: number;
+  input_tokens: number;
+  output_tokens: number;
+  observation: Record<string, unknown> | null;
+  exchanges: Exchange[];
+}
+
+/** A finished game with everything behind it. */
+export interface Replay {
+  game: Game;
+  turns: Turn[];
 }
 
 export interface RoomCreated {
@@ -365,4 +398,9 @@ export function submitAction(
     `/games/${session.gameId}/actions`,
     json({ ...action, expected_version: expectedVersion }, authorization(session)),
   );
+}
+
+/** Everything about a finished game, to replay it step by step. */
+export function getReplay(session: Session): Promise<Replay> {
+  return request<Replay>(`/games/${session.gameId}/replay`, { headers: authorization(session) });
 }

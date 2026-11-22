@@ -11,6 +11,12 @@ Providers:
 - `hostile`    a stand-in that misbehaves on purpose. Checks the guards, costs nothing.
 - `anthropic`  Claude through the API. Every case is a paid request, so it needs
                `--confirm-cost` and credentials in the environment.
+- `deepseek`   DeepSeek through its API: paid, so it also needs `--confirm-cost`.
+- `codex`      Codex on this computer, on the ChatGPT subscription it is logged in to.
+- `claude_code` Claude Code on this computer, on its Claude subscription.
+
+The local clients cost no API money but use up a subscription's quota, and
+each answer takes seconds, so they take `--limit` and `--suites` seriously.
 
 The exit code is 1 if a safety invariant broke: an illegal action was accepted,
 a secret was sent to a model, or the game master showed a role it cannot know.
@@ -31,7 +37,10 @@ from app.evals import arena, gm_eval, player_eval, report
 from app.evals.cases import load_gm_cases, load_player_cases
 from app.evals.models import HostileModel, ScriptedModel
 
-PROVIDERS = ("random", "scripted", "hostile", "anthropic")
+PROVIDERS = ("random", "scripted", "hostile", "anthropic", "deepseek", "codex", "claude_code")
+PAID = ("anthropic", "deepseek")
+"""Providers billed per request; a run needs `--confirm-cost`."""
+LOCAL = ("codex", "claude_code")
 SUITES = ("players", "gm", "arena")
 PLAYER_COUNTS = (5, 6, 7, 8, 9, 10)
 
@@ -50,8 +59,27 @@ def build_model(provider: str, settings: Settings) -> tuple[ModelClient | None, 
 
             model = AnthropicModel(model=settings.llm_model, effort=settings.llm_effort)
             return model, f"{settings.llm_model} (effort {settings.llm_effort})"
+        case "deepseek" | "codex" | "claude_code":
+            from app.agents.drivers import build_drivers
+
+            # Asked for by name: the server's LLM_DRIVERS switch is for the lobby, not here.
+            driver = build_drivers(settings.model_copy(update={"llm_drivers": provider}))[provider]
+            if driver.model is None:
+                raise SystemExit(f"{driver.label} cannot be used here: {driver.problem}.")
+            return driver.model, driver.label
         case other:
             raise ValueError(f"Unknown provider '{other}'.")
+
+
+def timeouts(provider: str, settings: Settings) -> tuple[float, float]:
+    """`(player, game master)` seconds to wait for one answer from this provider."""
+    match provider:
+        case "codex":
+            return settings.codex_timeout_seconds, settings.codex_timeout_seconds
+        case "claude_code":
+            return settings.claude_code_timeout_seconds, settings.claude_code_timeout_seconds
+        case _:
+            return settings.llm_player_timeout_seconds, settings.llm_gm_timeout_seconds
 
 
 def _pricing(settings: Settings) -> Pricing | None:
@@ -116,12 +144,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     unknown = sorted(set(suites) - set(SUITES))
     if unknown:
         parser.error(f"unknown suite(s): {', '.join(unknown)}")
-    if args.provider == "anthropic" and not args.confirm_cost:
-        parser.error("--provider anthropic sends paid requests; pass --confirm-cost to go ahead")
+    if args.provider in PAID and not args.confirm_cost:
+        parser.error(
+            f"--provider {args.provider} sends paid requests; pass --confirm-cost to go ahead"
+        )
 
     settings = Settings()
     pricing = _pricing(settings) if args.provider == "anthropic" else None
     model, model_name = build_model(args.provider, settings)
+    player_timeout, gm_timeout = timeouts(args.provider, settings)
 
     players: list[player_eval.PlayerResult] | None = None
     narrations: list[gm_eval.GmResult] | None = None
@@ -132,13 +163,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             load_player_cases()[: args.limit],
             model,
             style=args.style,
-            timeout_seconds=settings.llm_player_timeout_seconds,
+            timeout_seconds=player_timeout,
         )
         player_summary = player_eval.summarise(players, pricing)
 
     if model is not None and "gm" in suites:
         narrations = gm_eval.run_cases(
-            load_gm_cases()[: args.limit], model, timeout_seconds=settings.llm_gm_timeout_seconds
+            load_gm_cases()[: args.limit], model, timeout_seconds=gm_timeout
         )
         gm_summary = gm_eval.summarise(narrations, pricing)
 
@@ -154,13 +185,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         ):
             matches += arena.play_series(PLAYER_COUNTS, args.random_games, baseline)
         if model is not None:
-            budget = TokenBudget(settings.llm_max_tokens_per_game, pricing)
-            llm = LlmPlayer(
-                model,
-                budget,
-                style=args.style,
-                timeout_seconds=settings.llm_player_timeout_seconds,
-            )
+            # A local client is counted, never cut off: it is not billed per token.
+            ceiling = 10**15 if args.provider in LOCAL else settings.llm_max_tokens_per_game
+            budget = TokenBudget(ceiling, pricing)
+            llm = LlmPlayer(model, budget, style=args.style, timeout_seconds=player_timeout)
             counts = [int(count) for count in args.players.split(",") if count]
             for matchup in (
                 arena.Matchup("llm", "random"),

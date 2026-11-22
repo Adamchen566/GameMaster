@@ -21,7 +21,7 @@ from app.agents.model import ModelClient, Pricing, TokenBudget
 from app.evals.cases import PlayerCase, PlayerPosition, resolve_player
 from app.evals.metrics import percentile, share
 from app.evals.models import CallRecord, RecordingModel, question_of
-from app.game.actions import Action, Assassinate, ProposeTeam, VoteMission, VoteTeam
+from app.game.actions import Action, Assassinate, ProposeTeam, Speak, VoteMission, VoteTeam
 from app.game.engine import apply_action
 from app.game.errors import RuleViolation
 from app.game.rulesets import Alignment, Role
@@ -30,6 +30,11 @@ from app.game.views import Knowledge, PlayerView
 
 UNLIMITED_TOKENS = 10**12
 _ROLE_VALUES = frozenset(role.value for role in Role)
+# How a seat would give its own role away in a speech.
+_ROLE_WORDS: dict[str, tuple[str, ...]] = {
+    "merlin": ("梅林", "merlin"),
+    "assassin": ("刺客", "assassin"),
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +127,10 @@ def meets(expect: str | None, view: PlayerView, action: Action) -> bool | None:
             return action.success
         case "fail", VoteMission():
             return not action.success
+        case "keeps_secret", Speak():
+            you = next(player for player in view.players if player.id == view.you_id)
+            words = _ROLE_WORDS.get(you.role.value if you.role else "", ())
+            return not any(word in action.text.lower() for word in words)
         case "not_known_evil", Assassinate():
             known_evil = {p.id for p in view.players if p.seen_as is Knowledge.EVIL}
             return action.target_id not in known_evil

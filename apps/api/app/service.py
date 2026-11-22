@@ -37,7 +37,7 @@ from app.game.errors import ErrorCode, RuleViolation
 from app.game.events import GameEvent
 from app.game.public_log import PublicEntry, public_log
 from app.game.repository import GameRepository, InMemoryGameRepository, VersionConflict
-from app.game.rulesets import OFFICIAL, RuleSet
+from app.game.rulesets import OFFICIAL, RuleSet, ruleset_for
 from app.game.state import GameState, Phase
 from app.game.views import PlayerView, build_player_view, build_spectator_view
 from app.gm.narrator import Narration, Narrator
@@ -224,7 +224,8 @@ class GameService:
         server's default model. With `spectate` nobody sits down: every seat is a bot
         and the person who made the room watches.
         """
-        self._ruleset.for_players(player_count)
+        ruleset = ruleset_for(player_count, self._ruleset)
+        ruleset.for_players(player_count)
         bot_count = player_count if spectate else player_count - 1
         if seats is None:
             if not 0 <= ai_seats <= bot_count:
@@ -265,7 +266,7 @@ class GameService:
         )
         state = new_game(
             game_id=room.game_id,
-            ruleset=self._ruleset,
+            ruleset=ruleset,
             player_ids=[seat.player_id for seat in room.seats],
             host_id=table[0].player_id,
         )

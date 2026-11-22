@@ -77,6 +77,8 @@ class PlayerView:
     proposal_number: int | None
     max_rejected_proposals: int
     missions_to_win: int
+    evil_count: int
+    """How many players are evil. Everyone at the table knows this."""
     proposed_team: tuple[str, ...]
     speeches: tuple[Speech, ...]
     """What has been said about the latest proposal, in speaking order."""
@@ -129,6 +131,7 @@ def build_player_view(state: GameState, player_id: str) -> PlayerView:
         proposal_number=state.proposal_number if in_play else None,
         max_rejected_proposals=state.ruleset.max_rejected_proposals,
         missions_to_win=state.ruleset.missions_to_win,
+        evil_count=state.ruleset.for_players(len(state.players)).evil_count,
         proposed_team=state.proposed_team,
         speeches=state.speeches,
         speaker_id=state.next_speaker_id,

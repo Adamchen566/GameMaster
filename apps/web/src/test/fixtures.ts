@@ -56,6 +56,8 @@ export function makeGame(overrides: Partial<Game> = {}): Game {
     proposal_number: 1,
     max_rejected_proposals: 5,
     missions_to_win: 3,
+    ruleset_id: "official",
+    evil_count: 2,
     proposed_team: ["p2", "p3"],
     speeches: [],
     speaker_id: null,

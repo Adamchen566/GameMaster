@@ -17,7 +17,7 @@ from app.game.actions import (
 )
 from app.game.engine import apply_action, evolve, new_game, replay
 from app.game.errors import RuleViolation
-from app.game.rulesets import OFFICIAL
+from app.game.rulesets import ruleset_for
 from app.game.simulate import next_action as random_legal_action
 from app.game.simulate import play_random_game
 from app.game.state import GameState, Phase
@@ -70,12 +70,14 @@ def step(state: GameState, action: Action) -> GameState:
 
 
 @settings(max_examples=75, deadline=None)
-@given(data=st.data(), player_count=st.integers(5, 10), seed=SEEDS)
+@given(data=st.data(), player_count=st.integers(5, 12), seed=SEEDS)
 def test_no_sequence_of_actions_breaks_the_rules(
     data: st.DataObject, player_count: int, seed: int
 ) -> None:
     ids = player_ids(player_count)
-    state = new_game(game_id="prop", ruleset=OFFICIAL, player_ids=ids, host_id=ids[0])
+    state = new_game(
+        game_id="prop", ruleset=ruleset_for(player_count), player_ids=ids, host_id=ids[0]
+    )
     junk = data.draw(st.lists(arbitrary_actions(ids), max_size=40))
     rng = random.Random(seed)
     check_invariants(state)
@@ -98,7 +100,7 @@ def test_no_sequence_of_actions_breaks_the_rules(
         assert step(state, action) is state, "a finished game accepts nothing"
 
 
-PLAYER_COUNTS = range(5, 11)
+PLAYER_COUNTS = range(5, 13)
 
 
 @pytest.mark.parametrize("player_count", PLAYER_COUNTS)

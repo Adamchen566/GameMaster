@@ -47,7 +47,7 @@ def test_malformed_room_request_is_rejected(backend: Backend, payload: dict[str,
     assert backend.client.post("/rooms", json=payload).status_code == 422
 
 
-@pytest.mark.parametrize("player_count", [1, 4, 11])
+@pytest.mark.parametrize("player_count", [1, 4, 13])
 def test_room_needs_a_supported_player_count(backend: Backend, player_count: int) -> None:
     response = backend.client.post(
         "/rooms", json={"nickname": "Adam", "player_count": player_count}

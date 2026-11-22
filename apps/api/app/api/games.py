@@ -5,7 +5,9 @@ from typing import Any
 from fastapi import APIRouter
 
 from app.api.deps import ServiceDep, SessionDep
-from app.api.schemas import ActionRequest, ErrorOut, GameOut
+from app.api.errors import ApiError
+from app.api.schemas import ActionRequest, ErrorOut, GameOut, ReplayOut, TurnOut
+from app.game.state import Phase
 
 router = APIRouter(tags=["games"])
 
@@ -28,3 +30,18 @@ def submit_action(request: ActionRequest, session: SessionDep, service: ServiceD
     action = request.to_action(session.seat.player_id, session.room.seed)
     service.submit(session, action)
     return GameOut.from_snapshot(service.snapshot(session), session.room)
+
+
+@router.get("/games/{game_id}/replay", response_model=ReplayOut, responses=_ERRORS)
+def get_replay(session: SessionDep, service: ServiceDep) -> ReplayOut:
+    """Everything about a finished game: every role, every thought, every model turn.
+
+    Only once the game is over: the turns hold each seat's role and private notes.
+    """
+    snapshot = service.snapshot(session)
+    if snapshot.view.phase is not Phase.FINISHED:
+        raise ApiError(409, "game_not_finished", "A game can be replayed once it is over.")
+    return ReplayOut(
+        game=GameOut.from_snapshot(snapshot, session.room),
+        turns=[TurnOut.from_record(turn) for turn in service.turns(session.room.game_id)],
+    )
