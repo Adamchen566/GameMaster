@@ -61,6 +61,8 @@ class AgentDecision:
     """Players it openly says it does not trust. Public."""
     note: str
     """The player's private reasoning for its own later turns. Never shown to anyone."""
+    inner: str = ""
+    """One sentence of what it really thinks. Spectators see it; the table never does."""
 
 
 # Every field is required so the schema stays within what structured outputs
@@ -76,6 +78,7 @@ DECISION_SCHEMA: dict[str, Any] = {
         "speech": {"type": "string"},
         "suspects": {"type": "array", "items": {"type": "string"}},
         "note": {"type": "string"},
+        "inner": {"type": "string"},
     },
     "required": [
         "action",
@@ -86,6 +89,7 @@ DECISION_SCHEMA: dict[str, Any] = {
         "speech",
         "suspects",
         "note",
+        "inner",
     ],
     "additionalProperties": False,
 }
@@ -188,6 +192,8 @@ def decision_from_data(data: object) -> AgentDecision:
         speech=field("speech", str),
         suspects=tuple(suspects),
         note=field("note", str)[:NOTE_LIMIT],
+        # Newer than the other fields: an answer without it is still an answer.
+        inner=inner if isinstance(inner := data.get("inner", ""), str) else "",
     )
 
 

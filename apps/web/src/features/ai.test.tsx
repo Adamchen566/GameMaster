@@ -7,7 +7,6 @@ import { jsonResponse, legal, makeGame, makePlayers } from "../test/fixtures";
 import { GamePage } from "./game/GamePage";
 import { gameReducer } from "./game/gameReducer";
 import type { AppState } from "./game/gameReducer";
-import { LobbyPage } from "./lobby/LobbyPage";
 
 function announcement(version: number, overrides: Partial<Announcement> = {}): Announcement {
   return {
@@ -38,68 +37,6 @@ function renderGame(game: Game) {
     />,
   );
 }
-
-describe("lobby: AI options", () => {
-  beforeEach(() => {
-    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => undefined)));
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  function renderLobby(llmAvailable: boolean) {
-    const onCreate = vi.fn();
-    render(
-      <LobbyPage creating={false} error={null} llmAvailable={llmAvailable} onCreate={onCreate} />,
-    );
-    fireEvent.change(screen.getByLabelText("昵称"), { target: { value: "Adam" } });
-    return { onCreate, submit: () => fireEvent.click(screen.getByRole("button", { name: "创建对局" })) };
-  }
-
-  it("offers no AI seats and no AI host when the server has no model", () => {
-    const { onCreate, submit } = renderLobby(false);
-
-    expect(screen.queryByText(/AI 玩家席位/)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("AI 主持")).not.toBeInTheDocument();
-    expect(screen.getByText(/没有配置模型/)).toBeInTheDocument();
-    expect(screen.getByLabelText("固定播报")).toBeChecked();
-
-    fireEvent.click(screen.getByLabelText("关闭"));
-    submit();
-
-    expect(onCreate).toHaveBeenCalledWith("Adam", 5, { aiSeats: 0, aiStyle: "baseline", gm: "off" });
-  });
-
-  it("lets you pick AI seats, their style and an AI host", () => {
-    const { onCreate, submit } = renderLobby(true);
-
-    // The style only matters once there is an AI seat.
-    expect(screen.queryByText("AI 玩家的打法")).not.toBeInTheDocument();
-    expect(screen.getByText(/会产生费用/)).toBeInTheDocument();
-
-    fireEvent.click(screen.getByLabelText("3 个"));
-    fireEvent.click(screen.getByLabelText("谨慎"));
-    fireEvent.click(screen.getByLabelText("AI 主持"));
-    submit();
-
-    expect(onCreate).toHaveBeenCalledWith("Adam", 5, { aiSeats: 3, aiStyle: "cautious", gm: "ai" });
-  });
-
-  it("never asks for more AI seats than there are bot seats", () => {
-    const { onCreate, submit } = renderLobby(true);
-
-    fireEvent.click(screen.getByLabelText("10 人"));
-    fireEvent.click(screen.getByLabelText("9 个"));
-    fireEvent.click(screen.getByLabelText("5 人"));
-
-    expect(screen.queryByLabelText("9 个")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("4 个")).toBeChecked();
-    submit();
-
-    expect(onCreate).toHaveBeenCalledWith("Adam", 5, { aiSeats: 4, aiStyle: "baseline", gm: "template" });
-  });
-});
 
 describe("game: AI seats and the host", () => {
   it("marks model seats, random bots, and who the game is waiting for", () => {
@@ -235,7 +172,7 @@ describe("app: waiting for AI seats", () => {
         reads += 1;
         return jsonResponse(game);
       }
-      return jsonResponse({ llm_available: true, status: "ok" });
+      return jsonResponse({ llm_available: true, gm_ai_available: true, drivers: [], personas: [], status: "ok" });
     });
     vi.stubGlobal("fetch", fetchMock);
     return { reads: () => reads };

@@ -97,7 +97,7 @@ describe("GamePage", () => {
 
     const submit = screen.getByRole("button", { name: "提交队伍" });
     expect(submit).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Adam" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Adam（你）" })).toHaveAttribute("aria-pressed", "true");
 
     fireEvent.click(screen.getByRole("button", { name: "Tristan" }));
     expect(onToggleTeam).toHaveBeenCalledExactlyOnceWith("p4");
@@ -108,7 +108,7 @@ describe("GamePage", () => {
     const { onAction } = renderGame(asLeader(), { selectedTeam: ["p1", "p4"] });
 
     expect(screen.getByRole("button", { name: "Gawain" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Adam" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Adam（你）" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "提交队伍" }));
 
     expect(onAction).toHaveBeenCalledExactlyOnceWith({ type: "propose_team", team: ["p1", "p4"] });

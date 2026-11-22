@@ -193,6 +193,22 @@
 - [x] 逐步播放：发言一个一个出现，开始投票、亮票、队伍出发、翻任务牌各有一拍转场；可以跳过。说明见 [`architecture.md`](architecture.md) 第 3 节“逐步播放”。
 - [ ] 本人试玩并反馈。
 
+### v0.9 多模型同桌与观战（2026-11-22 追加）
+
+本人要求参考多模型同桌玩狼人杀的项目继续做，其他模型只接 DeepSeek。说明见 [`architecture.md`](architecture.md) 第 8 节。
+
+- [x] 每个座位单独选由谁来打：内置机器人、Claude（API）、DeepSeek（API）、本机 Claude Code、本机 Codex（本人要求用 Codex 的额度）。
+- [x] 大厅逐个显示每种模型能不能用、缺什么。
+- [x] 10 个座位的人设（名字、性格、颜色），写进模型席位的系统提示。
+- [x] 心声：观战时实时看，对局结束后复盘。
+- [x] 观战：所有座位由 AI 打，看到全部身份。
+- [x] 浏览器朗读、投票连线。
+- [ ] 用真实的 DeepSeek 密钥打一局。（需要本人提供 `DEEPSEEK_API_KEY`，会产生费用。）
+- [ ] 用本机 Claude Code 打一局。（不要密钥，会用本人的订阅额度，要先确认。）
+- [x] 用本机 Codex 真实打通一整局，完整记录在 [`evidence/games/codex-spectated-5p.json`](evidence/games/codex-spectated-5p.json)。
+- [x] 每局完整保存（默认 SQLite 文件），每个模型回合的输入、回答、耗时都记下；可导出成 JSON。
+- [ ] 回放界面。（本人说后面会要求。）
+
 ### v1.0 作品集
 
 按原 Task 13 执行。

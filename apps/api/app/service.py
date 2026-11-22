@@ -23,23 +23,28 @@ from dataclasses import dataclass, replace
 from typing import Protocol
 from uuid import uuid4
 
-from app.agents.llm_player import LlmPlayer
+from app.agents.drivers import Driver, default_driver
+from app.agents.llm_player import AgentTurn, LlmPlayer, Style
 from app.agents.model import TokenBudget, Usage
+from app.agents.personas import BOT_NAMES, persona_for
 from app.agents.state import AgentState, AgentStateStore, InMemoryAgentStateStore
-from app.agents.table_bot import choose_action
-from app.game.actions import Action
+from app.agents.table_bot import choose_action, inner_thought
+from app.agents.thoughts import InMemoryThoughtStore, Thought, ThoughtStore, clean_thought
+from app.agents.turns import InMemoryTurnStore, TurnRecord, TurnStore
+from app.game.actions import Action, StartGame
 from app.game.engine import apply_action, new_game
-from app.game.errors import RuleViolation
+from app.game.errors import ErrorCode, RuleViolation
 from app.game.events import GameEvent
 from app.game.public_log import PublicEntry, public_log
 from app.game.repository import GameRepository, InMemoryGameRepository, VersionConflict
 from app.game.rulesets import OFFICIAL, RuleSet
-from app.game.state import GameState
-from app.game.views import PlayerView, build_player_view
+from app.game.state import GameState, Phase
+from app.game.views import PlayerView, build_player_view, build_spectator_view
 from app.gm.narrator import Narration, Narrator
 from app.gm.templates import Language
 from app.observability import event_id, in_current_context
 from app.rooms import (
+    SPECTATOR_ID,
     InMemoryRoomStore,
     Room,
     RoomStore,
@@ -51,30 +56,26 @@ from app.rooms import (
 
 log = logging.getLogger(__name__)
 
-BOT_NAMES = (
-    "Gawain",
-    "Lancelot",
-    "Tristan",
-    "Galahad",
-    "Bors",
-    "Kay",
-    "Bedivere",
-    "Gareth",
-    "Lamorak",
-)
-
+THOUGHTFUL = ("propose_team", "speak", "assassinate")
+"""The turns a built-in bot leaves a thought for. A thought per ballot would be noise."""
 ANNOUNCEMENT_LIMIT = 12
 """How many of the most recent public events a client is shown."""
+UNMETERED_TOKENS = 10**15
+"""The ceiling for local clients: a number no game reaches."""
 MAX_AI_TURNS_PER_RUN = 500
 """A whole game is ~100 events; this only stops a bug from spinning forever."""
 
 
 @dataclass(frozen=True, slots=True)
 class Session:
-    """An authenticated human seat."""
+    """An authenticated person: a seat at the table, or a spectator outside it."""
 
     room: Room
     seat: Seat
+
+    @property
+    def is_spectator(self) -> bool:
+        return self.seat.player_id == SPECTATOR_ID
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,6 +100,10 @@ class Snapshot:
     """Everything that has happened in the open, oldest first. The client replays it step by step."""
     usage: Usage
     cost_usd: float | None
+    spectator: bool = False
+    """The client watches from outside the table and sees every role."""
+    thoughts: tuple[Thought, ...] = ()
+    """What the AI seats really thought. Empty for a player while the game is on."""
 
 
 class Executor(Protocol):
@@ -145,6 +150,9 @@ class GameService:
         new_seed: Callable[[], int] = _random_seed,
         agent_states: AgentStateStore | None = None,
         llm_players: Mapping[str, LlmPlayer] | None = None,
+        drivers: Mapping[str, Driver] | None = None,
+        thoughts: ThoughtStore | None = None,
+        turns: TurnStore | None = None,
         narrator: Narrator | None = None,
         budget: TokenBudget | None = None,
         executor: Executor | None = None,
@@ -159,8 +167,15 @@ class GameService:
             agent_states if agent_states is not None else InMemoryAgentStateStore()
         )
         self._llm_players: Mapping[str, LlmPlayer] = llm_players or {}
+        self._drivers: Mapping[str, Driver] = drivers or {}
+        # Players bound to one driver's model, made when a seat first needs one.
+        self._driver_players: dict[tuple[str, str], LlmPlayer] = {}
+        self._thoughts: ThoughtStore = thoughts if thoughts is not None else InMemoryThoughtStore()
+        self._turns: TurnStore = turns if turns is not None else InMemoryTurnStore()
         self._narrator = narrator if narrator is not None else Narrator()
-        self._budget = budget
+        self._budget = budget if budget is not None or not drivers else TokenBudget(300_000)
+        # Local clients run on the person's subscription: counted, never cut off.
+        self._unmetered = TokenBudget(UNMETERED_TOKENS)
         self._executor: Executor = executor if executor is not None else _ThreadExecutor()
         # Serialises writers inside this process. Across processes the repository's
         # version check decides who wins. Never held while a model is being called.
@@ -172,7 +187,21 @@ class GameService:
     @property
     def llm_available(self) -> bool:
         """Whether seats and the game master can be played by a model on this server."""
-        return bool(self._llm_players)
+        return bool(self._llm_players) or default_driver(self._drivers) is not None
+
+    @property
+    def gm_ai_available(self) -> bool:
+        """Whether the game master can be voiced by a model here."""
+        return self._narrator.has_model
+
+    @property
+    def drivers(self) -> Mapping[str, Driver]:
+        """Every way of reaching a model this server knows, usable or not."""
+        return self._drivers
+
+    def turns(self, game_id: str) -> tuple[TurnRecord, ...]:
+        """Every model turn of the game, for review. Holds secrets: not for players."""
+        return self._turns.for_game(game_id)
 
     # --- Rooms -----------------------------------------------------------------
 
@@ -185,37 +214,60 @@ class GameService:
         ai_style: str = "baseline",
         gm: str = "template",
         language: str = "zh",
+        seats: Sequence[str] | None = None,
+        spectate: bool = False,
     ) -> CreatedRoom:
-        """Seat one human as host; fill the rest with `ai_seats` model seats, then random bots."""
+        """Set up a table.
+
+        `seats` says who plays each bot seat, in seat order: "bot" for the built-in
+        bot or the id of a driver. Without it, the first `ai_seats` bot seats use the
+        server's default model. With `spectate` nobody sits down: every seat is a bot
+        and the person who made the room watches.
+        """
         self._ruleset.for_players(player_count)
-        if not 0 <= ai_seats <= player_count - 1:
-            raise ValueError("ai_seats must be between 0 and the number of bot seats.")
+        bot_count = player_count if spectate else player_count - 1
+        if seats is None:
+            if not 0 <= ai_seats <= bot_count:
+                raise ValueError("ai_seats must be between 0 and the number of bot seats.")
+            seats = ["model"] * ai_seats + ["bot"] * (bot_count - ai_seats)
+        if len(seats) != bot_count:
+            raise ValueError(f"This table has {bot_count} bot seats, got {len(seats)} choices.")
 
         token, token_hash = new_token()
-        human = Seat(player_id="p1", name=nickname, is_bot=False, token_hash=token_hash)
+        first = 1 if spectate else 2
         bots = tuple(
             Seat(
-                player_id=f"p{number}",
-                name=BOT_NAMES[number - 2],
+                player_id=f"p{first + index}",
+                name=BOT_NAMES[index],
                 is_bot=True,
-                agent="llm" if number - 2 < ai_seats else "random",
-                style=ai_style if number - 2 < ai_seats else None,
+                agent="random" if choice == "bot" else "llm",
+                style=None if choice == "bot" else ai_style,
+                driver=None if choice in ("bot", "model") else choice,
             )
-            for number in range(2, player_count + 1)
+            for index, choice in enumerate(seats)
         )
+        if spectate:
+            person = Seat(
+                player_id=SPECTATOR_ID, name=nickname, is_bot=False, token_hash=token_hash
+            )
+            table: tuple[Seat, ...] = bots
+        else:
+            person = Seat(player_id="p1", name=nickname, is_bot=False, token_hash=token_hash)
+            table = (person, *bots)
         room = Room(
             code=new_room_code(),
             game_id=uuid4().hex,
             seed=self._new_seed(),
-            seats=(human, *bots),
+            seats=table,
             gm=gm,
             language=language,
+            spectator=person if spectate else None,
         )
         state = new_game(
             game_id=room.game_id,
             ruleset=self._ruleset,
             player_ids=[seat.player_id for seat in room.seats],
-            host_id=human.player_id,
+            host_id=table[0].player_id,
         )
 
         # One transaction: a game without a room, or a room without a game, is never stored.
@@ -223,10 +275,8 @@ class GameService:
             self._games.create(state)
             self._rooms.add(room)
 
-        session = Session(room=room, seat=human)
-        return CreatedRoom(
-            session=session, token=token, view=build_player_view(state, human.player_id)
-        )
+        session = Session(room=room, seat=person)
+        return CreatedRoom(session=session, token=token, view=_view_of(session, state))
 
     def authenticate(self, token: str) -> Session | None:
         found = self._rooms.by_token_hash(hash_token(token))
@@ -246,7 +296,7 @@ class GameService:
         # Self-healing: if the server restarted while a model was due to act,
         # the next poll starts its turn again.
         self._ensure_ai_running(session.room, state)
-        return build_player_view(state, session.seat.player_id)
+        return _view_of(session, state)
 
     def snapshot(self, session: Session) -> Snapshot:
         """The view plus what everyone at the table may see about the AI seats and the GM."""
@@ -255,6 +305,9 @@ class GameService:
             state = self._games.load(room.game_id)
             events = self._games.events(room.game_id)
             agents = self._agent_states.for_game(room.game_id)
+            # A thought usually gives a seat's side away: only for those who may know it.
+            open_book = session.is_spectator or state.phase is Phase.FINISHED
+            thoughts = self._thoughts.for_game(room.game_id) if open_book else ()
 
         thinking = tuple(
             seat.player_id
@@ -262,13 +315,15 @@ class GameService:
             if seat.is_bot and build_player_view(state, seat.player_id).legal_actions
         )
         return Snapshot(
-            view=build_player_view(state, session.seat.player_id),
+            view=_view_of(session, state),
             thinking=thinking,
             agents=agents,
             announcements=self._announcements(room, events),
             log=public_log(events),
             usage=self._budget.usage(room.game_id) if self._budget else Usage(),
             cost_usd=self._budget.cost(room.game_id) if self._budget else None,
+            spectator=session.is_spectator,
+            thoughts=thoughts,
         )
 
     def _announcements(self, room: Room, events: Sequence[GameEvent]) -> tuple[Narration, ...]:
@@ -289,23 +344,32 @@ class GameService:
         with self._lock:
             state = self._games.load(room.game_id)
             loaded_version = state.version
+            if session.is_spectator:
+                # Watching is all a spectator does, except opening the game they set up.
+                if not isinstance(action, StartGame):
+                    raise RuleViolation(
+                        ErrorCode.UNKNOWN_PLAYER, "A spectator has no seat at this table."
+                    )
+                action = replace(action, player_id=state.host_id)
 
             earlier = self._games.events(room.game_id)
             state, events = apply_action(state, action)
-            state, bot_events = self._play_bot_turns(room, state, [*earlier, *events])
+            state, bot_events, thoughts = self._play_bot_turns(room, state, [*earlier, *events])
 
             new_events = [*events, *bot_events]
             self._games.append(room.game_id, loaded_version, new_events)
+            self._thoughts.add(room.game_id, tuple(thoughts))
 
         _log_events(room.game_id, loaded_version, new_events, actor=session.seat.player_id)
         self._after_append(room, state, loaded_version, new_events)
-        return build_player_view(state, session.seat.player_id)
+        return _view_of(session, state)
 
     def _play_bot_turns(
         self, room: Room, state: GameState, so_far: Sequence[GameEvent]
-    ) -> tuple[GameState, list[GameEvent]]:
+    ) -> tuple[GameState, list[GameEvent], list[Thought]]:
         """Let the built-in bots act until a human or a model seat is due."""
         events: list[GameEvent] = []
+        thoughts: list[Thought] = []
         names, language = _names(room), _language(room)
         bots = [seat for seat in room.seats if _agent(seat) == "random"]
 
@@ -313,10 +377,14 @@ class GameService:
             for bot in bots:
                 view = build_player_view(state, bot.player_id)
                 if view.legal_actions:
+                    history = public_log([*so_far, *events])
+                    thought = _bot_thought(room, view, history)
+                    if thought:
+                        thoughts.append(Thought(state.version + 1, bot.player_id, thought))
                     action = choose_action(
                         view,
                         _rng(room, view),
-                        history=public_log([*so_far, *events]),
+                        history=history,
                         names=names,
                         language=language,
                         salt=str(room.seed),
@@ -325,7 +393,7 @@ class GameService:
                     events.extend(new_events)
                     break
             else:
-                return state, events
+                return state, events, thoughts
 
     def _after_append(
         self, room: Room, state: GameState, first_version: int, events: Sequence[GameEvent]
@@ -391,7 +459,7 @@ class GameService:
         view = build_player_view(state, seat.player_id)
         # The slow part. No lock is held, so people can keep acting meanwhile.
         started = time.perf_counter()
-        action, after = self._decide(room, seat, view, history, before)
+        action, after, thought, turn = self._decide(room, seat, view, history, before)
         decided_ms = round((time.perf_counter() - started) * 1000, 1)
 
         with self._lock, self._transaction():
@@ -410,6 +478,11 @@ class GameService:
                 return True
             if after is not None:
                 self._agent_states.put(game_id, seat.player_id, after)
+            if thought:
+                self._thoughts.add(game_id, (Thought(fresh.version + 1, seat.player_id, thought),))
+            if _agent(seat) == "llm" and after is not None:
+                record = _turn_record(fresh.version + 1, seat, after, turn, decided_ms)
+                self._turns.add(game_id, record)
 
         log.info(
             "ai_turn",
@@ -434,7 +507,8 @@ class GameService:
         view: PlayerView,
         history: Sequence[PublicEntry],
         before: AgentState,
-    ) -> tuple[Action, AgentState | None]:
+    ) -> tuple[Action, AgentState | None, str, AgentTurn | None]:
+        """The seat's action, its new private state (model seats) and what it thought."""
         rng = _rng(room, view)
         bot = choose_action(
             view,
@@ -445,22 +519,54 @@ class GameService:
             salt=str(room.seed),
         )
         if _agent(seat) != "llm":
-            return bot, None
+            return bot, None, _bot_thought(room, view, history), None
 
-        player = self._llm_players.get(seat.style or "baseline")
+        player = self._player_for(seat)
         if player is None:
-            # The room was created with model seats, but this server has no model now.
-            return bot, replace(before, last_source="fallback", last_fallback_reason="unavailable")
+            # The room was created with model seats, but this server cannot reach the model now.
+            unavailable = replace(
+                before, last_source="fallback", last_fallback_reason="unavailable"
+            )
+            return bot, unavailable, _bot_thought(room, view, history), None
 
+        persona = persona_for(seat.name)
         turn = player.take_turn(
-            view, names=_names(room), history=history, note=before.note, rng=rng
+            view,
+            names=_names(room),
+            history=history,
+            note=before.note,
+            rng=rng,
+            persona=persona.manner_en if persona is not None else None,
         )
-        return turn.action, AgentState(
+        after = AgentState(
             # A fallback turn has no new note; keep what the seat knew before.
             note=turn.note if turn.note is not None else before.note,
             last_source=turn.source,
             last_fallback_reason=turn.fallback_reason,
         )
+        return turn.action, after, clean_thought(turn.inner or ""), turn
+
+    def _player_for(self, seat: Seat) -> LlmPlayer | None:
+        """The model player for this seat, or None when its model cannot be reached."""
+        style: Style = "baseline"
+        if seat.style == "cautious":
+            style = "cautious"
+        elif seat.style == "aggressive":
+            style = "aggressive"
+        if seat.driver is None:
+            return self._llm_players.get(style)
+        driver = self._drivers.get(seat.driver)
+        if driver is None or driver.model is None:
+            return None
+        budget = self._budget if driver.metered else self._unmetered
+        if budget is None:
+            return None
+        key = (driver.id, style)
+        if key not in self._driver_players:
+            self._driver_players[key] = LlmPlayer(
+                driver.model, budget, style=style, timeout_seconds=driver.timeout_seconds
+            )
+        return self._driver_players[key]
 
 
 def _log_events(
@@ -483,6 +589,46 @@ def _log_events(
 def _narrated(entries: Sequence[PublicEntry]) -> tuple[PublicEntry, ...]:
     """The game master announces what happened, not what people said."""
     return tuple(entry for entry in entries if entry.kind != "speech")
+
+
+def _turn_record(
+    version: int, seat: Seat, after: AgentState, turn: AgentTurn | None, duration_ms: float
+) -> TurnRecord:
+    """What to keep of one model-driven turn. `turn` is None when no model could be asked."""
+    return TurnRecord(
+        version=version,
+        player_id=seat.player_id,
+        driver=seat.driver or "default",
+        source=after.last_source or "fallback",
+        fallback_reason=after.last_fallback_reason,
+        attempts=turn.attempts if turn is not None else 0,
+        duration_ms=duration_ms,
+        input_tokens=turn.input_tokens if turn is not None else 0,
+        output_tokens=turn.output_tokens if turn is not None else 0,
+        observation=turn.observation if turn is not None else None,
+        exchanges=turn.exchanges if turn is not None else (),
+    )
+
+
+def _view_of(session: Session, state: GameState) -> PlayerView:
+    if session.is_spectator:
+        return build_spectator_view(state)
+    return build_player_view(state, session.seat.player_id)
+
+
+def _bot_thought(room: Room, view: PlayerView, history: Sequence[PublicEntry]) -> str:
+    """What the built-in bot in this seat believes, for the turns worth a thought."""
+    if not view.legal_actions or view.legal_actions[0].type not in THOUGHTFUL:
+        return ""
+    return clean_thought(
+        inner_thought(
+            view,
+            history=history,
+            names=_names(room),
+            language=_language(room),
+            salt=str(room.seed),
+        )
+    )
 
 
 def _names(room: Room) -> dict[str, str]:

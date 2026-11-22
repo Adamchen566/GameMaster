@@ -5,6 +5,8 @@ real database; `tests/storage/test_migrations.py` checks the two agree.
     games  1 ── 1  rooms            the application wrapper around one game
     rooms  1 ── n  room_players     seats: names, bots, reconnect token digests
     games  1 ── n  agent_states     per AI seat: private notes, how its last turn went
+    games  1 ── n  agent_thoughts   what an AI seat really thought when it acted
+    games  1 ── n  agent_turns      every model turn: what it was shown, what it answered
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ from sqlalchemy import (
     CheckConstraint,
     Column,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -105,6 +108,8 @@ room_players = Table(
     # Who plays a bot seat: "random" or "llm". NULL for humans.
     Column("agent", Text),
     Column("agent_style", Text),
+    # Which model plays an "llm" seat; NULL is the server's default model.
+    Column("agent_driver", Text),
     UniqueConstraint("room_id", "player_id"),
     UniqueConstraint("token_hash"),
     CheckConstraint("seat >= 0", name="seat_not_negative"),
@@ -123,4 +128,37 @@ agent_states = Table(
     Column("last_source", Text),
     Column("last_fallback_reason", Text),
     Column("updated_at", Timestamp, nullable=False),
+)
+
+agent_thoughts = Table(
+    "agent_thoughts",
+    metadata,
+    Column("game_id", Text, ForeignKey("games.id", ondelete="CASCADE"), primary_key=True),
+    # The game's version after the first event of the action the thought belongs to.
+    Column("version", Integer, primary_key=True),
+    Column("player_id", Text, primary_key=True),
+    # Secret while the game is on: it usually gives the seat's side away.
+    Column("text", Text, nullable=False),
+    Column("created_at", Timestamp, nullable=False),
+)
+
+agent_turns = Table(
+    "agent_turns",
+    metadata,
+    Column("game_id", Text, ForeignKey("games.id", ondelete="CASCADE"), primary_key=True),
+    # The game's version after the first event of the action the turn produced.
+    Column("version", Integer, primary_key=True),
+    Column("player_id", Text, primary_key=True),
+    Column("driver", Text, nullable=False),
+    Column("source", Text, nullable=False),
+    Column("fallback_reason", Text),
+    Column("attempts", Integer, nullable=False),
+    Column("duration_ms", Float, nullable=False),
+    Column("input_tokens", Integer, nullable=False),
+    Column("output_tokens", Integer, nullable=False),
+    # Exactly what the model was sent. Holds the seat's role: secret until the game is over.
+    Column("observation", Json),
+    # One entry per model call: its answer, why the game turned it down, or the error.
+    Column("exchanges", Json, nullable=False),
+    Column("created_at", Timestamp, nullable=False),
 )

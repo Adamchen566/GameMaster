@@ -1,6 +1,7 @@
 import { ApiError } from "../../api/client";
 import type {
   Alignment,
+  DriverId,
   FallbackReason,
   Phase,
   Player,
@@ -66,7 +67,35 @@ export const FALLBACK_REASONS: Record<FallbackReason, string> = {
   budget_exhausted: "本局模型额度已用完",
 };
 
+export const DRIVER_NAMES: Record<DriverId, string> = {
+  claude: "Claude（API）",
+  deepseek: "DeepSeek（API）",
+  claude_code: "本机 Claude Code",
+  codex: "本机 Codex",
+};
+
+/** Short names for the badge on a seat. */
+export const DRIVER_BADGES: Record<DriverId, string> = {
+  claude: "Claude",
+  deepseek: "DeepSeek",
+  claude_code: "Claude Code",
+  codex: "Codex",
+};
+
+export const DRIVER_PROBLEMS: Record<string, string> = {
+  missing_anthropic_api_key: "没有设置 ANTHROPIC_API_KEY",
+  missing_deepseek_api_key: "没有设置 DEEPSEEK_API_KEY",
+  claude_code_not_installed: "这台电脑上没找到 Claude Code",
+  not_logged_in: "Claude Code 还没登录，先在终端运行 claude 登录一次",
+  not_responding: "本机客户端没有响应",
+  codex_not_installed: "这台电脑上没找到 Codex",
+  codex_not_logged_in: "Codex 还没登录，先打开 Codex 用 ChatGPT 登录一次",
+  switched_off: "已在服务器配置里关闭",
+};
+
 const ERROR_MESSAGES: Record<string, string> = {
+  driver_unavailable: "选中的模型现在不可用，请换一个或改用内置机器人。",
+  wrong_seat_count: "座位数和人数对不上，请刷新页面后重试。",
   llm_not_configured: "这台服务器没有配置模型，不能使用 AI 玩家或 AI 主持。",
   too_many_ai_seats: "AI 玩家席位不能超过机器人席位数。",
   network: "连不上服务器，请确认后端已启动后重试。",

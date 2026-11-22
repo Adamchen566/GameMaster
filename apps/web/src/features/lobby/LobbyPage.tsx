@@ -1,11 +1,21 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 
-import type { AiStyle, GmMode, RoomOptions } from "../../api/client";
+import type {
+  AiStyle,
+  DriverId,
+  DriverStatus,
+  GmMode,
+  RoomOptions,
+  SeatChoice,
+  ServerConfig,
+} from "../../api/client";
+import { DRIVER_NAMES, DRIVER_PROBLEMS } from "../game/labels";
 import { ApiStatus } from "./ApiStatus";
 
 const PLAYER_COUNTS = [5, 6, 7, 8, 9, 10];
 const MAX_NICKNAME_LENGTH = 20;
+const MAX_BOT_SEATS = 10;
 
 const STYLES: { value: AiStyle; label: string }[] = [
   { value: "baseline", label: "均衡" },
@@ -19,27 +29,43 @@ const GM_MODES: { value: GmMode; label: string; needsModel: boolean }[] = [
   { value: "off", label: "关闭", needsModel: false },
 ];
 
+/** What the lobby assumes until the server has answered: only what always works. */
+export const NO_MODELS: ServerConfig = {
+  llm_available: false,
+  gm_ai_available: false,
+  drivers: [],
+  personas: [],
+};
+
 interface LobbyPageProps {
   creating: boolean;
   error: string | null;
-  /** Whether the server can run model-driven seats and the AI game master. */
-  llmAvailable?: boolean;
+  /** What this server can do: which models can play a seat, who sits in the bot seats. */
+  config?: ServerConfig;
   onCreate: (nickname: string, playerCount: number, options: RoomOptions) => void;
 }
 
-export function LobbyPage({ creating, error, llmAvailable = false, onCreate }: LobbyPageProps) {
+export function LobbyPage({ creating, error, config = NO_MODELS, onCreate }: LobbyPageProps) {
   // Kept here, not in the reducer: a failed request must not wipe what was typed.
   const [nickname, setNickname] = useState("");
   const [playerCount, setPlayerCount] = useState(5);
-  const [aiSeats, setAiSeats] = useState(0);
+  const [spectate, setSpectate] = useState(false);
+  // One choice per possible bot seat; the table uses as many as it has seats.
+  const [choices, setChoices] = useState<SeatChoice[]>(() => Array(MAX_BOT_SEATS).fill("bot"));
   const [aiStyle, setAiStyle] = useState<AiStyle>("baseline");
   const [gm, setGm] = useState<GmMode>("template");
   const [touched, setTouched] = useState(false);
 
-  const botSeats = playerCount - 1;
-  // Choices that need a model fall back to what the server can do.
-  const effectiveAiSeats = llmAvailable ? Math.min(aiSeats, botSeats) : 0;
-  const effectiveGm: GmMode = gm === "ai" && !llmAvailable ? "template" : gm;
+  const usable = new Set(
+    config.drivers.filter((driver) => driver.available).map((driver) => driver.id),
+  );
+  const botSeats = spectate ? playerCount : playerCount - 1;
+  // A choice the server cannot honour falls back to the built-in bot.
+  const seats: SeatChoice[] = choices
+    .slice(0, botSeats)
+    .map((choice) => (choice === "bot" || usable.has(choice) ? choice : "bot"));
+  const modelSeats = seats.filter((choice) => choice !== "bot").length;
+  const effectiveGm: GmMode = gm === "ai" && !config.gm_ai_available ? "template" : gm;
 
   const trimmed = nickname.trim();
   const nicknameError =
@@ -49,11 +75,15 @@ export function LobbyPage({ creating, error, llmAvailable = false, onCreate }: L
         ? `昵称最多 ${MAX_NICKNAME_LENGTH} 个字。`
         : null;
 
+  function choose(index: number, choice: SeatChoice) {
+    setChoices((current) => current.map((old, seat) => (seat === index ? choice : old)));
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setTouched(true);
     if (nicknameError === null && !creating) {
-      onCreate(trimmed, playerCount, { aiSeats: effectiveAiSeats, aiStyle, gm: effectiveGm });
+      onCreate(trimmed, playerCount, { seats, spectate, aiStyle, gm: effectiveGm });
     }
   }
 
@@ -64,7 +94,9 @@ export function LobbyPage({ creating, error, llmAvailable = false, onCreate }: L
       <header className="page__header">
         <p className="eyebrow">Avalon AI Game Master</p>
         <h1>阿瓦隆 · 单人对局</h1>
-        <p className="muted">你和若干机器人同桌。完成三次任务，或让任务失败三次。</p>
+        <p className="muted">
+          你和若干 AI 同桌，也可以只看它们打。完成三次任务，或让任务失败三次。
+        </p>
       </header>
 
       <form className="card form" onSubmit={handleSubmit} noValidate>
@@ -90,7 +122,7 @@ export function LobbyPage({ creating, error, llmAvailable = false, onCreate }: L
         </div>
 
         <fieldset className="field">
-          <legend>人数（含你自己）</legend>
+          <legend>人数{spectate ? "" : "（含你自己）"}</legend>
           <div className="choices">
             {PLAYER_COUNTS.map((count) => (
               <label key={count} className="choice">
@@ -107,55 +139,109 @@ export function LobbyPage({ creating, error, llmAvailable = false, onCreate }: L
           </div>
         </fieldset>
 
-        {llmAvailable ? (
-          <>
-            <fieldset className="field">
-              <legend>AI 玩家席位（其余席位是随机机器人）</legend>
-              <div className="choices">
-                {Array.from({ length: botSeats + 1 }, (_, count) => (
-                  <label key={count} className="choice">
-                    <input
-                      type="radio"
-                      name="ai-seats"
-                      value={count}
-                      checked={effectiveAiSeats === count}
-                      onChange={() => setAiSeats(count)}
-                    />
-                    <span>{count} 个</span>
-                  </label>
-                ))}
-              </div>
-              <p className="muted">AI 玩家的每个回合都会调用一次模型，会产生费用。</p>
-            </fieldset>
+        <fieldset className="field">
+          <legend>你的位置</legend>
+          <div className="choices">
+            <label className="choice">
+              <input
+                type="radio"
+                name="spectate"
+                checked={!spectate}
+                onChange={() => setSpectate(false)}
+              />
+              <span>上桌一起玩</span>
+            </label>
+            <label className="choice">
+              <input
+                type="radio"
+                name="spectate"
+                checked={spectate}
+                onChange={() => setSpectate(true)}
+              />
+              <span>观战</span>
+            </label>
+          </div>
+          {spectate && (
+            <p className="muted">
+              所有座位都由 AI 来打。你能看到每个人的身份和心声，但不参与发言和投票。
+            </p>
+          )}
+        </fieldset>
 
-            {effectiveAiSeats > 0 && (
-              <fieldset className="field">
-                <legend>AI 玩家的打法</legend>
-                <div className="choices">
-                  {STYLES.map((style) => (
-                    <label key={style.value} className="choice">
-                      <input
-                        type="radio"
-                        name="ai-style"
-                        value={style.value}
-                        checked={aiStyle === style.value}
-                        onChange={() => setAiStyle(style.value)}
-                      />
-                      <span>{style.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-            )}
-          </>
-        ) : (
-          <p className="muted">这台服务器没有配置模型，其余席位都是随机机器人。</p>
+        <fieldset className="field">
+          <legend>入座：每个座位由谁来打</legend>
+          <ol className="seating">
+            {seats.map((choice, index) => {
+              const persona = config.personas[index];
+              const name = persona?.name ?? `座位 ${index + 1}`;
+              return (
+                <li key={index} className="seating__seat">
+                  <span
+                    className="seating__dot"
+                    style={{ background: persona?.color }}
+                    aria-hidden="true"
+                  />
+                  <span className="seating__who">
+                    <strong>{name}</strong>
+                    {persona !== undefined && <span className="muted">{persona.title}</span>}
+                  </span>
+                  <select
+                    aria-label={`${name} 由谁来打`}
+                    value={choice}
+                    onChange={(event) => choose(index, event.target.value as SeatChoice)}
+                  >
+                    <option value="bot">内置机器人</option>
+                    {config.drivers.map((driver) => (
+                      <option key={driver.id} value={driver.id} disabled={!driver.available}>
+                        {DRIVER_NAMES[driver.id]}
+                        {driver.available ? "" : "（不可用）"}
+                      </option>
+                    ))}
+                  </select>
+                </li>
+              );
+            })}
+          </ol>
+          {config.drivers.length > 0 ? (
+            <ul className="drivers" aria-label="模型状态">
+              {config.drivers.map((driver) => (
+                <DriverLine key={driver.id} driver={driver} />
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">这台服务器没有配置模型，所有座位都是内置机器人。</p>
+          )}
+          {modelSeats > 0 && (
+            <p className="muted">
+              {costNote(seats)}
+            </p>
+          )}
+        </fieldset>
+
+        {modelSeats > 0 && (
+          <fieldset className="field">
+            <legend>AI 玩家的打法</legend>
+            <div className="choices">
+              {STYLES.map((style) => (
+                <label key={style.value} className="choice">
+                  <input
+                    type="radio"
+                    name="ai-style"
+                    value={style.value}
+                    checked={aiStyle === style.value}
+                    onChange={() => setAiStyle(style.value)}
+                  />
+                  <span>{style.label}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
         )}
 
         <fieldset className="field">
           <legend>主持人</legend>
           <div className="choices">
-            {GM_MODES.filter((mode) => llmAvailable || !mode.needsModel).map((mode) => (
+            {GM_MODES.filter((mode) => config.gm_ai_available || !mode.needsModel).map((mode) => (
               <label key={mode.value} className="choice">
                 <input
                   type="radio"
@@ -177,11 +263,37 @@ export function LobbyPage({ creating, error, llmAvailable = false, onCreate }: L
         )}
 
         <button type="submit" className="button button--primary" disabled={creating}>
-          {creating ? "正在创建…" : "创建对局"}
+          {creating ? "正在创建…" : spectate ? "创建并观战" : "创建对局"}
         </button>
       </form>
 
       <ApiStatus />
     </main>
   );
+}
+
+function DriverLine({ driver }: { driver: DriverStatus }) {
+  const problem = driver.problem === null ? null : (DRIVER_PROBLEMS[driver.problem] ?? driver.problem);
+  return (
+    <li className={`drivers__line${driver.available && problem === null ? " drivers__line--ok" : ""}`}>
+      <strong>{DRIVER_NAMES[driver.id]}</strong>
+      <span>{problem ?? "可用"}</span>
+    </li>
+  );
+}
+
+/** What the chosen seats will cost, in the terms of whoever pays for it. */
+function costNote(seats: SeatChoice[]): string {
+  const used = new Set(seats.filter((choice): choice is DriverId => choice !== "bot"));
+  const parts: string[] = [];
+  if (used.has("claude") || used.has("deepseek")) {
+    parts.push("用 API 的座位每个回合调用一次模型，按量计费");
+  }
+  if (used.has("claude_code")) {
+    parts.push("本机 Claude Code 的座位用你自己的订阅额度，每步要十几秒到一两分钟");
+  }
+  if (used.has("codex")) {
+    parts.push("本机 Codex 的座位用你的 ChatGPT 额度，每步几秒到半分钟");
+  }
+  return `${parts.join("；")}。`;
 }

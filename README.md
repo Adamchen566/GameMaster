@@ -32,21 +32,28 @@ corepack pnpm test
 corepack pnpm dev
 ```
 
-这样启动的后端把对局放在内存里，重启即丢。想在本机不装数据库也能保留对局，启动前设置 `DATABASE_URL` 并建表（PostgreSQL 的写法见 [`docs/database.md`](docs/database.md)）：
+每一局都会完整保存在 `apps/api/data/avalon.db`（SQLite，启动时自动建表，已被 git 忽略），重启后端不会丢。保存的内容足够以后回放：所有事件（含发牌、每张选票和任务牌）、公开记录、每个 AI 的心声，以及每个模型回合看到了什么、回答了什么、用了多久。导出某一局：
 
 ```powershell
 cd apps/api
-$env:DATABASE_URL = "sqlite:///./avalon.db"
-.\.venv\Scripts\python.exe -m alembic upgrade head
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
+.\.venv\Scripts\python.exe -m app.records            # 列出所有对局
+.\.venv\Scripts\python.exe -m app.records <game_id>  # 写到 records/<game_id>.json
 ```
 
-想用 AI 玩家和 AI 主持，启动后端前再设置两个环境变量。**每个 AI 回合都是一次付费的 API 调用**，每局有 token 上限（默认 30 万，`LLM_MAX_TOKENS_PER_GAME`）；全部配置项见 [`docs/architecture.md`](docs/architecture.md) 第 5.1 节。
+想换成 PostgreSQL 就设置 `DATABASE_URL`（写法见 [`docs/database.md`](docs/database.md)）；设成 `memory` 则只放在内存里，重启即丢。
 
-```powershell
-$env:LLM_PROVIDER = "anthropic"
-$env:ANTHROPIC_API_KEY = "你的密钥"
-```
+想让 AI 上桌，每个座位可以单独选由谁来打。三种来源，配好哪个，大厅里就能选哪个：
+
+| 来源 | 需要什么 | 花费 |
+| --- | --- | --- |
+| Claude（API） | `ANTHROPIC_API_KEY` | 每个回合一次付费调用 |
+| DeepSeek（API） | `DEEPSEEK_API_KEY` | 每个回合一次付费调用 |
+| 本机 Claude Code | 装好 Claude Code 并登录一次（终端运行 `claude`），不要密钥 | 用你自己的订阅额度，每步十几秒到一两分钟 |
+| 本机 Codex | 装好 Codex（桌面版或命令行）并用 ChatGPT 登录一次，不要密钥 | 用你的 ChatGPT 额度，每步几秒到半分钟 |
+
+密钥写进 `apps/api/.env`（照 [`apps/api/.env.example`](apps/api/.env.example) 复制一份，已被 git 忽略），重启后端生效。每局有 token 上限（默认 30 万，`LLM_MAX_TOKENS_PER_GAME`）；全部配置项见 [`docs/architecture.md`](docs/architecture.md) 第 5.1 节。AI 主持只用 API（Claude 或 DeepSeek），本机客户端太慢，不用来主持。
+
+也可以只看不打：大厅里选“观战”，所有座位都由 AI 来打，你能看到每个人的身份和“心声”（每个 AI 做决定时的真实想法）；上桌打的对局结束后，也能在复盘里看到所有心声。浏览器支持时可以打开“朗读”，用浏览器自带的声音念出每一句话（每个角色音高、语速不同）。
 
 先按上面启动后端，再打开 <http://localhost:5173>：输入昵称、选人数、创建对局，就可以和机器人打一局。对局是一张圆桌：队长选人后，从队长开始每人发言一次（可以点名你怀疑的人），然后全体投票；机器人会根据任务结果、投票和点名判断谁可疑，并说出理由。页面请求 `/api/...`，由 Vite 代理转发到后端；后端不在 `http://127.0.0.1:8000` 时用环境变量 `API_PROXY_TARGET` 指定。
 
