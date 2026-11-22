@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     llm_effort: Literal["low", "medium", "high", "xhigh", "max"] = "low"
     llm_max_tokens_per_game: int = 300_000
     """Input plus output tokens. A game that has used this many plays its AI seats as bots."""
+    llm_max_tokens_per_day: int | None = None
+    """Tokens all games together may spend on paid APIs per UTC day; unset is no limit.
+    Set it on any server strangers can reach. Local clients are never counted against it."""
     llm_player_timeout_seconds: float = 8.0
     llm_gm_timeout_seconds: float = 3.0
     llm_input_price_per_mtok: float | None = None
