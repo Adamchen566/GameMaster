@@ -66,9 +66,16 @@ sudo systemctl reload caddy
 | AI 座位“服务不可用” | DeepSeek 密钥错或余额不足；看日志里的 `fallback_reason` |
 | 内存不够 | `free -h`；后端被 systemd 限制在 400 MB，超了会被重启 |
 
-## 7. 还没做
+## 7. 演练记录
+
+| 日期（UTC） | 做了什么 | 结果 |
+| --- | --- | --- |
+| 2026-11-22 09:55 | 首次部署 `4059ca2`；服务器上开一局 12 人观战局并取回放 | 健康检查通过；对局打完，扩展规则，139 条公开记录 |
+| 2026-11-22 09:56 | 同一提交再部署一次（新版本目录 `20261122095656`），然后 `deploy.sh rollback` | 2.9 秒切回 `20261122095524`，`/health` 正常，库里的对局还在 |
+| 2026-11-22 09:55 | 加 Caddy 块：备份 → `caddy validate` → `reload` | 只增加行；`jiashao.tech` 200、`ai.jiashao.tech` 302、`api.jiashao.tech/privacy` 200，和改之前一样 |
+
+## 8. 还没做
 
 - 没有自动备份；没有监控和告警。
 - 没有按 IP 限制开局频率，费用只靠 token 上限兜底。
 - 回放用的令牌存在浏览器 `localStorage`，见 [`threat-model.md`](threat-model.md)。
-- 回滚演练还没正式记录（路线图 v0.5 的一项）。
