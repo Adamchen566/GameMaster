@@ -131,6 +131,8 @@ class ScriptedModel:
             "approve": rng.random() < 0.6,
             "success": not (legal["can_fail"] and rng.random() < 0.8),
             "target_id": rng.choice(targets) if legal["type"] == "assassinate" else "",
+            "speech": "",
+            "suspects": [],
             "note": "scripted",
         }
 
@@ -163,6 +165,8 @@ def _decision(question: Mapping[str, Any], **changes: Any) -> dict[str, Any]:
         "approve": True,
         "success": True,
         "target_id": legal["targets"][0] if legal["targets"] else "",
+        "speech": "",
+        "suspects": [],
         "note": "",
         **changes,
     }

@@ -25,8 +25,8 @@ from uuid import uuid4
 
 from app.agents.llm_player import LlmPlayer
 from app.agents.model import TokenBudget, Usage
-from app.agents.policy_fallback import choose_action
 from app.agents.state import AgentState, AgentStateStore, InMemoryAgentStateStore
+from app.agents.table_bot import choose_action
 from app.game.actions import Action
 from app.game.engine import apply_action, new_game
 from app.game.errors import RuleViolation
@@ -275,7 +275,7 @@ class GameService:
         language = _language(room)
         return tuple(
             self._narrator.peek(room.game_id, entry, names, language)
-            for entry in public_log(events)[-ANNOUNCEMENT_LIMIT:]
+            for entry in _narrated(public_log(events))[-ANNOUNCEMENT_LIMIT:]
         )
 
     # --- Writing ---------------------------------------------------------------
@@ -287,8 +287,9 @@ class GameService:
             state = self._games.load(room.game_id)
             loaded_version = state.version
 
+            earlier = self._games.events(room.game_id)
             state, events = apply_action(state, action)
-            state, bot_events = self._play_random_bot_turns(room, state)
+            state, bot_events = self._play_bot_turns(room, state, [*earlier, *events])
 
             new_events = [*events, *bot_events]
             self._games.append(room.game_id, loaded_version, new_events)
@@ -297,17 +298,27 @@ class GameService:
         self._after_append(room, state, loaded_version, new_events)
         return build_player_view(state, session.seat.player_id)
 
-    def _play_random_bot_turns(
-        self, room: Room, state: GameState
+    def _play_bot_turns(
+        self, room: Room, state: GameState, so_far: Sequence[GameEvent]
     ) -> tuple[GameState, list[GameEvent]]:
+        """Let the built-in bots act until a human or a model seat is due."""
         events: list[GameEvent] = []
+        names, language = _names(room), _language(room)
         bots = [seat for seat in room.seats if _agent(seat) == "random"]
 
         while True:
             for bot in bots:
                 view = build_player_view(state, bot.player_id)
                 if view.legal_actions:
-                    state, new_events = apply_action(state, choose_action(view, _rng(room, view)))
+                    action = choose_action(
+                        view,
+                        _rng(room, view),
+                        history=public_log([*so_far, *events]),
+                        names=names,
+                        language=language,
+                        salt=str(room.seed),
+                    )
+                    state, new_events = apply_action(state, action)
                     events.extend(new_events)
                     break
             else:
@@ -318,7 +329,7 @@ class GameService:
     ) -> None:
         """Start whatever the new events call for. Must be called without the lock held."""
         if room.gm == "ai" and self._narrator.has_model:
-            entries = public_log(events, first_version=first_version + 1)
+            entries = _narrated(public_log(events, first_version=first_version + 1))
             if entries:
                 names, language = _names(room), _language(room)
 
@@ -422,15 +433,21 @@ class GameService:
         before: AgentState,
     ) -> tuple[Action, AgentState | None]:
         rng = _rng(room, view)
+        bot = choose_action(
+            view,
+            rng,
+            history=history,
+            names=_names(room),
+            language=_language(room),
+            salt=str(room.seed),
+        )
         if _agent(seat) != "llm":
-            return choose_action(view, rng), None
+            return bot, None
 
         player = self._llm_players.get(seat.style or "baseline")
         if player is None:
             # The room was created with model seats, but this server has no model now.
-            return choose_action(view, rng), replace(
-                before, last_source="fallback", last_fallback_reason="unavailable"
-            )
+            return bot, replace(before, last_source="fallback", last_fallback_reason="unavailable")
 
         turn = player.take_turn(
             view, names=_names(room), history=history, note=before.note, rng=rng
@@ -458,6 +475,11 @@ def _log_events(
             "events": [type(event).__name__ for event in events],
         },
     )
+
+
+def _narrated(entries: Sequence[PublicEntry]) -> tuple[PublicEntry, ...]:
+    """The game master announces what happened, not what people said."""
+    return tuple(entry for entry in entries if entry.kind != "speech")
 
 
 def _names(room: Room) -> dict[str, str]:

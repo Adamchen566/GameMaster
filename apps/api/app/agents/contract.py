@@ -20,17 +20,18 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from app.game.actions import Action, Assassinate, ProposeTeam, VoteMission, VoteTeam
+from app.game.actions import Action, Assassinate, ProposeTeam, Speak, VoteMission, VoteTeam
+from app.game.engine import MAX_SUSPECTS, SPEECH_LIMIT, clean_speech
 from app.game.public_log import PublicEntry
 from app.game.views import LegalAction, PlayerView
 
-HISTORY_LIMIT = 30
+HISTORY_LIMIT = 80
 """Public log entries shown to the model: the most recent ones, a fixed number."""
 NOTE_LIMIT = 400
 """Characters of private notes a player may carry from one turn to the next."""
 NAME_LIMIT = 20
 
-ACTION_TYPES = ("propose_team", "vote_team", "vote_mission", "assassinate")
+ACTION_TYPES = ("propose_team", "speak", "vote_team", "vote_mission", "assassinate")
 
 
 class InvalidDecision(Exception):
@@ -54,6 +55,10 @@ class AgentDecision:
     approve: bool
     success: bool
     target_id: str
+    speech: str
+    """What the player says to the table when it is its turn to speak. Public."""
+    suspects: tuple[str, ...]
+    """Players it openly says it does not trust. Public."""
     note: str
     """The player's private reasoning for its own later turns. Never shown to anyone."""
 
@@ -68,9 +73,20 @@ DECISION_SCHEMA: dict[str, Any] = {
         "approve": {"type": "boolean"},
         "success": {"type": "boolean"},
         "target_id": {"type": "string"},
+        "speech": {"type": "string"},
+        "suspects": {"type": "array", "items": {"type": "string"}},
         "note": {"type": "string"},
     },
-    "required": ["action", "team", "approve", "success", "target_id", "note"],
+    "required": [
+        "action",
+        "team",
+        "approve",
+        "success",
+        "target_id",
+        "speech",
+        "suspects",
+        "note",
+    ],
     "additionalProperties": False,
 }
 
@@ -133,6 +149,10 @@ def build_observation(
             "max_rejected_proposals": view.max_rejected_proposals,
             "missions_to_win": view.missions_to_win,
             "proposed_team": list(view.proposed_team),
+            "speeches_on_this_proposal": [
+                {"player": speech.player_id, "text": speech.text, "suspects": list(speech.suspects)}
+                for speech in view.speeches
+            ],
             "legal_actions": [_legal_json(legal) for legal in view.legal_actions],
             "public_history": [entry.to_json() for entry in history[-HISTORY_LIMIT:]],
             "your_notes": note[:NOTE_LIMIT],
@@ -155,6 +175,9 @@ def decision_from_data(data: object) -> AgentDecision:
     team = field("team", list)
     if not all(type(member) is str for member in team):
         raise InvalidDecision("Field 'team' must be a list of player ids.")
+    suspects = field("suspects", list)
+    if not all(type(suspect) is str for suspect in suspects):
+        raise InvalidDecision("Field 'suspects' must be a list of player ids.")
 
     return AgentDecision(
         action=field("action", str),
@@ -162,6 +185,8 @@ def decision_from_data(data: object) -> AgentDecision:
         approve=field("approve", bool),
         success=field("success", bool),
         target_id=field("target_id", str),
+        speech=field("speech", str),
+        suspects=tuple(suspects),
         note=field("note", str)[:NOTE_LIMIT],
     )
 
@@ -190,6 +215,15 @@ def to_action(view: PlayerView, decision: AgentDecision) -> Action:
                     f"not allowed: {', '.join(sorted(unknown))}."
                 )
             return ProposeTeam(player_id=you, team=team, expected_version=version)
+        case "speak":
+            suspects = decision.suspects
+            if len(set(suspects)) != len(suspects) or len(suspects) > MAX_SUSPECTS:
+                raise InvalidDecision(f"Name at most {MAX_SUSPECTS} suspects, each once.")
+            if any(suspect not in legal.targets for suspect in suspects):
+                raise InvalidDecision("suspects may only contain ids from legal_actions[].targets.")
+            # Too long is cut rather than refused: the point was made by then.
+            text = clean_speech(decision.speech)[:SPEECH_LIMIT]
+            return Speak(player_id=you, text=text, suspects=suspects, expected_version=version)
         case "vote_team":
             return VoteTeam(player_id=you, approve=decision.approve, expected_version=version)
         case "vote_mission":

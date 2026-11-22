@@ -16,6 +16,7 @@ from app.game.rulesets import Alignment, Role, RuleSet
 class Phase(StrEnum):
     LOBBY = "lobby"
     TEAM_PROPOSAL = "team_proposal"
+    DISCUSSION = "discussion"
     TEAM_VOTE = "team_vote"
     MISSION_VOTE = "mission_vote"
     ASSASSINATION = "assassination"
@@ -54,6 +55,16 @@ class MissionState:
     """Set once a proposal for this mission is approved."""
     fail_votes: int | None = None
     outcome: MissionOutcome | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Speech:
+    """What one player said about the proposal on the table. Public."""
+
+    player_id: str
+    text: str
+    suspects: tuple[str, ...] = ()
+    """Players the speaker openly says they do not trust."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +107,8 @@ class GameState:
     rejected_proposals: int = 0
     """Proposals rejected in a row for the current mission."""
     proposed_team: tuple[str, ...] = ()
+    speeches: tuple[Speech, ...] = ()
+    """What has been said about the latest proposal, in speaking order."""
     team_votes: tuple[TeamVote, ...] = ()
     mission_votes: tuple[MissionVote, ...] = ()
     last_team_vote: TeamVoteRecord | None = None
@@ -119,6 +132,23 @@ class GameState:
     def proposal_number(self) -> int:
         """1-based number of the current proposal for the current mission."""
         return self.rejected_proposals + 1
+
+    @property
+    def speaking_order(self) -> tuple[str, ...]:
+        """The leader speaks first, then everyone else clockwise from the leader."""
+        ids = self.player_ids
+        if self.leader_id is None:
+            return ids
+        start = ids.index(self.leader_id)
+        return ids[start:] + ids[:start]
+
+    @property
+    def next_speaker_id(self) -> str | None:
+        """Whose turn it is to speak, while the table is discussing a proposal."""
+        if self.phase is not Phase.DISCUSSION:
+            return None
+        spoken = {speech.player_id for speech in self.speeches}
+        return next((pid for pid in self.speaking_order if pid not in spoken), None)
 
     @property
     def successful_missions(self) -> int:

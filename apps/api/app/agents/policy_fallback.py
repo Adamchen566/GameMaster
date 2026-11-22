@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import random
 
-from app.game.actions import Action, Assassinate, ProposeTeam, VoteMission, VoteTeam
+from app.game.actions import Action, Assassinate, ProposeTeam, Speak, VoteMission, VoteTeam
 from app.game.views import Knowledge, PlayerView
 
 APPROVAL_RATE = 0.6
@@ -33,6 +33,9 @@ def choose_action(view: PlayerView, rng: random.Random) -> Action:
             assert legal.team_size is not None
             team = tuple(rng.sample(legal.targets, legal.team_size))
             return ProposeTeam(player_id=view.you_id, team=team, expected_version=view.version)
+        case "speak":
+            # It has nothing to base an opinion on, so it passes.
+            return Speak(player_id=view.you_id, expected_version=view.version)
         case "vote_team":
             approve = rng.random() < APPROVAL_RATE
             return VoteTeam(player_id=view.you_id, approve=approve, expected_version=view.version)

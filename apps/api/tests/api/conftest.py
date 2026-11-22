@@ -109,6 +109,8 @@ def take_turn(seat: Seat, rng: random.Random) -> Game:
         case "propose_team":
             team = rng.sample(legal["targets"], legal["team_size"])
             return seat.act(type="propose_team", team=team, expected_version=version)
+        case "speak":
+            return seat.act(type="speak", text="No strong view yet.", expected_version=version)
         case "vote_team":
             return seat.act(type="vote_team", approve=rng.random() < 0.7, expected_version=version)
         case "vote_mission":

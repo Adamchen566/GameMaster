@@ -48,6 +48,25 @@ def named(caplog: pytest.LogCaptureFixture, event: str) -> list[dict[str, Any]]:
     return [fields(record) for record in caplog.records if record.getMessage() == event]
 
 
+def one_action(seat: Any) -> dict[str, Any]:
+    """Whatever the human may do right now, as a request body."""
+    legal = seat.legal
+    assert legal is not None
+    body: dict[str, Any] = {"type": legal["type"], "expected_version": seat.game["version"]}
+    match legal["type"]:
+        case "propose_team":
+            body["team"] = legal["targets"][: legal["team_size"]]
+        case "speak":
+            body["text"] = "Fine by me."
+        case "vote_team":
+            body["approve"] = True
+        case "vote_mission":
+            body["success"] = True
+        case "assassinate":
+            body["target_id"] = legal["targets"][0]
+    return body
+
+
 # --- The format --------------------------------------------------------------
 
 
@@ -161,18 +180,10 @@ def test_an_action_is_logged_with_the_request_game_and_event_ids(
     seat = start_game(backend)
     caplog.clear()
 
-    legal = seat.legal
-    assert legal is not None
     before = seat.game["version"]
     backend.client.post(
         f"/games/{seat.game_id}/actions",
-        json={
-            "type": "propose_team",
-            "team": legal["targets"][: legal["team_size"]],
-            "expected_version": before,
-        }
-        if legal["type"] == "propose_team"
-        else {"type": "vote_team", "approve": True, "expected_version": before},
+        json=one_action(seat),
         headers={**seat.headers, REQUEST_ID_HEADER: "trace-3"},
     )
 
@@ -264,16 +275,9 @@ def test_lines_written_during_a_request_carry_its_id(backend: Backend) -> None:
         seat = start_game(backend)
         stream.seek(0)
         stream.truncate()
-        legal = seat.legal
-        assert legal is not None and legal["type"] in ("propose_team", "vote_team")
-        action = (
-            {"type": "propose_team", "team": legal["targets"][: legal["team_size"]]}
-            if legal["type"] == "propose_team"
-            else {"type": "vote_team", "approve": True}
-        )
         response = backend.client.post(
             f"/games/{seat.game_id}/actions",
-            json={**action, "expected_version": seat.game["version"]},
+            json=one_action(seat),
             headers={**seat.headers, REQUEST_ID_HEADER: "trace-5"},
         )
         assert response.status_code == 200

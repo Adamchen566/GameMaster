@@ -82,7 +82,7 @@ def test_starting_the_game_deals_roles_and_lets_the_bots_play_up_to_your_turn(
     seat = start_game(backend)
     game = seat.game
 
-    assert game["phase"] in {"team_proposal", "team_vote"}
+    assert game["phase"] in {"team_proposal", "discussion", "team_vote"}
     assert game["version"] >= 2
     assert seat.me["role"] is not None
     assert seat.me["alignment"] in {"good", "evil"}
@@ -90,9 +90,16 @@ def test_starting_the_game_deals_roles_and_lets_the_bots_play_up_to_your_turn(
     if game["phase"] == "team_proposal":
         assert seat.me["is_leader"] is True
     else:
-        # A bot leader has proposed and every bot has already voted.
+        # A bot leader has proposed and the table has talked up to the human's seat.
         assert len(game["proposed_team"]) == game["missions"][0]["team_size"]
-        assert len(game["team_voted"]) == len(game["players"]) - 1
+        assert game["speeches"][0]["player_id"] == game["leader_id"]
+        if game["phase"] == "discussion":
+            assert game["speaker_id"] == game["you_id"]
+            assert seat.legal["type"] == "speak"
+        else:
+            # Everyone has spoken and every bot has already voted.
+            assert len(game["speeches"]) == len(game["players"])
+            assert len(game["team_voted"]) == len(game["players"]) - 1
 
 
 def test_reading_the_game_returns_the_same_view_as_the_last_action(backend: Backend) -> None:

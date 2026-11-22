@@ -6,10 +6,10 @@ player on a team to make a mission fail.
 
 from __future__ import annotations
 
-from app.game.actions import Action, ProposeTeam, StartGame, VoteMission, VoteTeam
+from app.game.actions import Action, ProposeTeam, Speak, StartGame, VoteMission, VoteTeam
 from app.game.engine import apply_action, new_game
 from app.game.rulesets import OFFICIAL, Alignment, Role, RuleSet
-from app.game.state import GameState, MissionOutcome
+from app.game.state import GameState, MissionOutcome, Phase
 
 
 def player_ids(player_count: int) -> tuple[str, ...]:
@@ -59,9 +59,23 @@ def team_with_evil(state: GameState, evil_members: int) -> tuple[str, ...]:
     return (*evil, *good)
 
 
-def propose(state: GameState, team: tuple[str, ...] | None = None) -> GameState:
+def propose_only(state: GameState, team: tuple[str, ...] | None = None) -> GameState:
+    """The leader names a team; the table has not discussed it yet."""
     team = default_team(state) if team is None else team
     return act(state, ProposeTeam(player_id=leader_id(state), team=team))
+
+
+def discuss(state: GameState) -> GameState:
+    """Everyone who has not spoken yet passes, in speaking order."""
+    while state.phase is Phase.DISCUSSION:
+        assert state.next_speaker_id is not None
+        state = act(state, Speak(player_id=state.next_speaker_id))
+    return state
+
+
+def propose(state: GameState, team: tuple[str, ...] | None = None) -> GameState:
+    """Propose a team and let the discussion pass, leaving the table ready to vote."""
+    return discuss(propose_only(state, team))
 
 
 def vote_team(state: GameState, *, approve: bool) -> GameState:

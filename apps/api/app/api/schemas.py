@@ -11,7 +11,15 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, Field, StrictBool, StringConstraints
 
 from app.agents.state import AgentState
-from app.game.actions import Action, Assassinate, ProposeTeam, StartGame, VoteMission, VoteTeam
+from app.game.actions import (
+    Action,
+    Assassinate,
+    ProposeTeam,
+    Speak,
+    StartGame,
+    VoteMission,
+    VoteTeam,
+)
 from app.rooms import Room, Seat
 from app.service import Snapshot
 
@@ -49,6 +57,21 @@ class ProposeTeamRequest(_ActionRequest):
         )
 
 
+class SpeakRequest(_ActionRequest):
+    type: Literal["speak"]
+    # Generous here; the rules engine applies the real limit after cleaning.
+    text: str = Field(default="", max_length=2000)
+    suspects: list[str] = Field(default_factory=list, max_length=20)
+
+    def to_action(self, player_id: str, seed: int) -> Action:
+        return Speak(
+            player_id=player_id,
+            text=self.text,
+            suspects=tuple(self.suspects),
+            expected_version=self.expected_version,
+        )
+
+
 class VoteTeamRequest(_ActionRequest):
     type: Literal["vote_team"]
     approve: StrictBool
@@ -82,6 +105,7 @@ class AssassinateRequest(_ActionRequest):
 ActionRequest = Annotated[
     StartGameRequest
     | ProposeTeamRequest
+    | SpeakRequest
     | VoteTeamRequest
     | VoteMissionRequest
     | AssassinateRequest,
@@ -127,6 +151,12 @@ class TeamVoteOut(BaseModel):
     approved: bool
 
 
+class SpeechOut(BaseModel):
+    player_id: str
+    text: str
+    suspects: list[str]
+
+
 class LegalActionOut(BaseModel):
     type: str
     team_size: int | None
@@ -167,6 +197,9 @@ class GameOut(BaseModel):
     max_rejected_proposals: int
     missions_to_win: int
     proposed_team: list[str]
+    speeches: list[SpeechOut]
+    """What has been said about the latest proposal, in speaking order."""
+    speaker_id: str | None
     team_voted: list[str]
     your_team_vote: bool | None
     last_team_vote: TeamVoteOut | None
@@ -244,6 +277,13 @@ class GameOut(BaseModel):
             max_rejected_proposals=view.max_rejected_proposals,
             missions_to_win=view.missions_to_win,
             proposed_team=list(view.proposed_team),
+            speeches=[
+                SpeechOut(
+                    player_id=speech.player_id, text=speech.text, suspects=list(speech.suspects)
+                )
+                for speech in view.speeches
+            ],
+            speaker_id=view.speaker_id,
             team_voted=list(view.team_voted),
             your_team_vote=view.your_team_vote,
             last_team_vote=None

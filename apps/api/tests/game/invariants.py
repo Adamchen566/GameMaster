@@ -5,7 +5,7 @@ from __future__ import annotations
 from app.game.rulesets import Alignment, Role
 from app.game.state import GameState, MissionOutcome, Phase, WinReason
 
-_PLAY_PHASES = {Phase.TEAM_PROPOSAL, Phase.TEAM_VOTE, Phase.MISSION_VOTE}
+_PLAY_PHASES = {Phase.TEAM_PROPOSAL, Phase.DISCUSSION, Phase.TEAM_VOTE, Phase.MISSION_VOTE}
 
 
 def check_invariants(state: GameState) -> None:
@@ -62,7 +62,17 @@ def check_invariants(state: GameState) -> None:
 
     mission = state.missions[state.mission_index]
 
-    if state.phase is Phase.TEAM_VOTE:
+    speakers = tuple(speech.player_id for speech in state.speeches)
+    if state.phase is Phase.DISCUSSION:
+        assert len(set(state.proposed_team)) == mission.team_size
+        assert set(state.proposed_team) <= ids
+        assert state.team_votes == ()
+        # People speak once each, in order, starting with the leader.
+        assert len(speakers) < player_count
+        assert speakers == state.speaking_order[: len(speakers)]
+        assert state.next_speaker_id == state.speaking_order[len(speakers)]
+    elif state.phase is Phase.TEAM_VOTE:
+        assert speakers == state.speaking_order, "the vote starts when all have spoken"
         assert len(set(state.proposed_team)) == mission.team_size
         assert set(state.proposed_team) <= ids
         voters = [vote.player_id for vote in state.team_votes]

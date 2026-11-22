@@ -40,6 +40,16 @@ class TeamProposed:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class PlayerSpoke:
+    mission_number: int
+    proposal_number: int
+    player_id: str
+    text: str
+    suspects: tuple[str, ...]
+    type: Literal["player_spoke"] = "player_spoke"
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class TeamVoteCast:
     player_id: str
     approve: bool
@@ -104,6 +114,7 @@ GameEvent = (
     GameStarted
     | MissionStarted
     | TeamProposed
+    | PlayerSpoke
     | TeamVoteCast
     | TeamApproved
     | TeamRejected

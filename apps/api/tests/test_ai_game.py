@@ -64,6 +64,8 @@ class LegalModel:
                 "approve": True,
                 "success": True,
                 "target_id": legal["targets"][0] if legal["targets"] else "",
+                "speech": "I have nothing to add.",
+                "suspects": [],
                 "note": f"{sent['you']['id']} saw version {len(sent['public_history'])}",
             }
         return ModelReply(data=answer, input_tokens=1000, output_tokens=50)
@@ -337,11 +339,12 @@ def test_fallback_turn_keeps_the_previous_note() -> None:
     service = service_with(model)
     created = service.create_room("Adam", 5, ai_seats=4)
     start(service, created)
-    # The human votes on the first proposal; by then every model seat has voted too.
-    view = service.view(created.session)
-    if view.legal_actions[0].type == "propose_team":
-        view = service.submit(created.session, choose_action(view, random.Random(1)))
-    notes = {seat: s.note for seat, s in service.snapshot(created.session).agents.items()}
+    # Play until every model seat has had a turn of its own and left itself a note.
+    notes: dict[str, str] = {}
+    while len(notes) < 4:
+        view = service.view(created.session)
+        service.submit(created.session, choose_action(view, random.Random(1)))
+        notes = {seat: s.note for seat, s in service.snapshot(created.session).agents.items()}
     assert len(notes) == 4
 
     model.fail = ModelTimeout("slow")

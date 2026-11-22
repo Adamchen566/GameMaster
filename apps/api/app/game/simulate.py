@@ -14,7 +14,15 @@ import random
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from app.game.actions import Action, Assassinate, ProposeTeam, StartGame, VoteMission, VoteTeam
+from app.game.actions import (
+    Action,
+    Assassinate,
+    ProposeTeam,
+    Speak,
+    StartGame,
+    VoteMission,
+    VoteTeam,
+)
 from app.game.engine import apply_action, new_game
 from app.game.events import (
     AssassinationAttempted,
@@ -25,6 +33,7 @@ from app.game.events import (
     MissionCompleted,
     MissionStarted,
     MissionVoteCast,
+    PlayerSpoke,
     TeamApproved,
     TeamProposed,
     TeamRejected,
@@ -51,6 +60,9 @@ def next_action(state: GameState, rng: random.Random) -> Action:
             assert state.leader_id is not None
             team = rng.sample(state.player_ids, state.current_mission.team_size)
             return ProposeTeam(player_id=state.leader_id, team=tuple(team))
+        case Phase.DISCUSSION:
+            assert state.next_speaker_id is not None
+            return Speak(player_id=state.next_speaker_id)
         case Phase.TEAM_VOTE:
             voted = {vote.player_id for vote in state.team_votes}
             voter_id = next(pid for pid in state.player_ids if pid not in voted)
@@ -103,6 +115,8 @@ def format_event(event: GameEvent) -> str:
                 f"proposal {event.proposal_number}: {event.leader_id} proposes "
                 f"[{', '.join(event.team)}]"
             )
+        case PlayerSpoke():
+            return f"PlayerSpoke           {event.player_id}: {event.text or '(pass)'}"
         case TeamVoteCast():
             return f"TeamVoteCast          {event.player_id} {_approve(event.approve)}"
         case TeamApproved():
