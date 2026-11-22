@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.game.errors import ErrorCode, RuleViolation
+from app.game.repository import GameNotFound, VersionConflict
 
 
 class ApiError(Exception):
@@ -44,3 +45,15 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(RuleViolation)
     def handle_rule_violation(_: Request, error: RuleViolation) -> JSONResponse:
         return JSONResponse(_body(error.code, error.message), status_code=status_for(error.code))
+
+    @app.exception_handler(VersionConflict)
+    def handle_version_conflict(_: Request, error: VersionConflict) -> JSONResponse:
+        # Another request changed the game between this one's load and its save.
+        return JSONResponse(
+            _body(ErrorCode.STALE_VERSION, "The game changed while your action was processed."),
+            status_code=409,
+        )
+
+    @app.exception_handler(GameNotFound)
+    def handle_game_not_found(_: Request, error: GameNotFound) -> JSONResponse:
+        return JSONResponse(_body("game_not_found", "This game does not exist."), status_code=404)

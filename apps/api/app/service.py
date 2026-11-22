@@ -10,6 +10,7 @@ import random
 import secrets
 import threading
 from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from uuid import uuid4
 
@@ -21,7 +22,15 @@ from app.game.repository import GameRepository, InMemoryGameRepository
 from app.game.rulesets import OFFICIAL, RuleSet
 from app.game.state import GameState
 from app.game.views import PlayerView, build_player_view
-from app.rooms import InMemoryRoomStore, Room, Seat, hash_token, new_room_code, new_token
+from app.rooms import (
+    InMemoryRoomStore,
+    Room,
+    RoomStore,
+    Seat,
+    hash_token,
+    new_room_code,
+    new_token,
+)
 
 BOT_NAMES = (
     "Gawain",
@@ -60,16 +69,20 @@ class GameService:
     def __init__(
         self,
         games: GameRepository | None = None,
-        rooms: InMemoryRoomStore | None = None,
+        rooms: RoomStore | None = None,
         *,
+        transaction: Callable[[], AbstractContextManager[object]] = nullcontext,
         ruleset: RuleSet = OFFICIAL,
         new_seed: Callable[[], int] = _random_seed,
     ) -> None:
         self._games: GameRepository = games if games is not None else InMemoryGameRepository()
-        self._rooms = rooms if rooms is not None else InMemoryRoomStore()
+        self._rooms: RoomStore = rooms if rooms is not None else InMemoryRoomStore()
+        # With a database, everything inside one `with self._transaction()` commits together.
+        self._transaction = transaction
         self._ruleset = ruleset
         self._new_seed = new_seed
-        # One lock is enough while everything lives in this process.
+        # Serialises writers inside this process. Across processes the repository's
+        # version check decides who wins.
         self._lock = threading.Lock()
 
     def create_room(self, nickname: str, player_count: int) -> CreatedRoom:
@@ -95,7 +108,8 @@ class GameService:
             host_id=human.player_id,
         )
 
-        with self._lock:
+        # One transaction: a game without a room, or a room without a game, is never stored.
+        with self._lock, self._transaction():
             self._games.create(state)
             self._rooms.add(room)
 

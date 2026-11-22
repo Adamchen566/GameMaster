@@ -31,3 +31,6 @@ Thumbs.db
 # Runtime data
 *.log
 postgres-data/
+
+# Local SQLite databases
+*.db

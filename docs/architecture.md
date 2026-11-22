@@ -121,7 +121,7 @@ cd apps/api
 
 ## 2. 单人对局后端
 
-一名真人坐庄，其余席位由 bot 补满。数据都在进程内存里，重启即丢，v0.4 换成 PostgreSQL。
+一名真人坐庄，其余席位由 bot 补满。设置了 `DATABASE_URL` 时对局存进数据库（见第 4 节），否则留在进程内存里，重启即丢。
 
 ```text
 浏览器 ──HTTP──> api/rooms.py, api/games.py      协议：鉴权、请求转动作、视图转响应
@@ -141,8 +141,11 @@ cd apps/api
 | --- | --- |
 | `game/views.py` | `build_player_view` 和 `legal_actions`；秘密信息的唯一出口 |
 | `game/repository.py` | `GameRepository` 接口和内存实现；只追加事件，按版本做乐观并发检查 |
+| `game/codec.py` | 事件 ↔ JSON；逐个事件类型显式解码 |
+| `storage/` | 同一套接口的 SQL 实现、表定义、事务 |
+| `config.py` | 读取环境变量 `DATABASE_URL` |
 | `agents/policy_fallback.py` | 随机合法 bot，只读取 `PlayerView` |
-| `rooms.py` | 房间、席位、重连令牌（只存 SHA-256 摘要） |
+| `rooms.py` | 房间、席位、重连令牌（只存 SHA-256 摘要）；`RoomStore` 接口和内存实现 |
 | `service.py` | 建房、鉴权、提交动作、推进 bot 回合 |
 | `api/` | FastAPI 路由、请求和响应模型、统一错误格式 |
 
@@ -211,3 +214,26 @@ bot 的随机数由“房间种子、席位、当前版本”派生，所以同�
 - 每次提交都带上玩家看到的 `version`。服务器返回 409 时，前端重新拉取对局再提示原因。
 - 重复点击由 `App.tsx` 里的一个 ref 挡住，按钮同时置灰。
 - 字体只写在字体栈里，不从网络加载。
+
+## 4. 持久化
+
+表结构、ER 图和五条查询在 [`database.md`](database.md)，这里只说它和其余部分怎么接。
+
+| 问题 | 做法 |
+| --- | --- |
+| 存什么 | 只存事件；当前状态由 `new_game(...)` + `replay(events)` 重建 |
+| 接口变了吗 | 没有。`SqlGameRepository`、`SqlRoomStore` 实现 v0.3 定下的 `GameRepository`、`RoomStore` |
+| 谁决定用哪种存储 | `api/deps.py` 的 `build_service`：有 `DATABASE_URL` 用 SQL，没有用内存 |
+| 两个请求同时写同一局 | `UPDATE games ... WHERE version = :expected` 只让一个成功，另一个得到 `VersionConflict` → HTTP 409 |
+| 建房写三张表 | `GameService(transaction=database.transaction)`，同一个事务，全成或全不成 |
+| 表结构怎么演进 | Alembic 迁移；测试检查迁移结果和 `storage/schema.py` 一致 |
+
+同一套仓库契约测试在三种实现上各跑一遍：
+
+| 实现 | 本机 | CI | 额外验证 |
+| --- | --- | --- | --- |
+| 内存 | 跑 | 跑 | — |
+| SQLite | 跑 | 跑 | 约束、迁移、重启后续局 |
+| PostgreSQL | 没有 `TEST_DATABASE_URL` 时跳过 | 必须跑（`REQUIRE_POSTGRES_TESTS=1`） | 行锁并发（8 个写入者只成功 1 个）、五条 JSONB 查询 |
+
+Compose 冒烟测试另外在真实的三容器环境里开一局、重启 API 容器，再用同一个令牌取回同一局。
