@@ -1,6 +1,6 @@
 # 架构
 
-目前只有规则引擎（v0.2）。API、持久化、界面和 AI 接入后在这里补充。
+目前有规则引擎（v0.2）和单人对局的后端（v0.3）。持久化、联机和 AI 接入后在这里补充。
 
 ## 1. 规则引擎
 
@@ -118,3 +118,72 @@ cd apps/api
 ```
 
 同样的参数永远打印同一局。这是开发工具：它读取完整的秘密状态来决定谁可以出失败牌，不是 AI 玩家。
+
+## 2. 单人对局后端
+
+一名真人坐庄，其余席位由 bot 补满。数据都在进程内存里，重启即丢，v0.4 换成 PostgreSQL。
+
+```text
+浏览器 ──HTTP──> api/rooms.py, api/games.py      协议：鉴权、请求转动作、视图转响应
+                        │
+                        v
+                   service.py                    一条命令路径：真人和 bot 都走这里
+                    │      │
+        apply_action│      │choose_action(view)
+                    v      v
+             game/engine   agents/policy_fallback   bot 只拿到自己席位的视图
+                    │
+                    v
+             game/repository（事件日志）   rooms.py（席位、名字、令牌摘要）
+```
+
+| 模块 | 职责 |
+| --- | --- |
+| `game/views.py` | `build_player_view` 和 `legal_actions`；秘密信息的唯一出口 |
+| `game/repository.py` | `GameRepository` 接口和内存实现；只追加事件，按版本做乐观并发检查 |
+| `agents/policy_fallback.py` | 随机合法 bot，只读取 `PlayerView` |
+| `rooms.py` | 房间、席位、重连令牌（只存 SHA-256 摘要） |
+| `service.py` | 建房、鉴权、提交动作、推进 bot 回合 |
+| `api/` | FastAPI 路由、请求和响应模型、统一错误格式 |
+
+### 2.1 接口
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `POST` | `/rooms` | 建房并入座。响应里的 `token` 只出现这一次 |
+| `GET` | `/games/{game_id}` | 你这个席位能看到的对局 |
+| `POST` | `/games/{game_id}/actions` | 提交一个动作；随后 bot 连续行动，直到又需要真人 |
+
+后两个接口需要 `Authorization: Bearer <token>`。错误统一为 `{"code": "...", "message": "..."}`：
+
+| 状态码 | 含义 | 例子 |
+| ---: | --- | --- |
+| 401 | 没带令牌或令牌无效 | `missing_token`、`invalid_token` |
+| 403 | 轮不到你做 | `wrong_game`、`not_leader`、`not_on_team` |
+| 404 | 对局不存在（只对已鉴权的请求如实回答） | `game_not_found` |
+| 409 | 现在不能做 | `wrong_phase`、`stale_version`、`already_voted` |
+| 422 | 内容不对 | `wrong_team_size`、`good_must_succeed`，以及请求体格式错误 |
+
+### 2.2 一次提交发生了什么
+
+1. 令牌换成席位；席位不属于这局则拒绝。
+2. 加锁，从仓库读出当前状态，记下版本。
+3. `apply_action` 校验并应用真人的动作。
+4. 依次找到有合法动作的 bot，给它自己的视图，让它选一个动作，再经 `apply_action` 应用；直到没有 bot 能动。
+5. 把这次产生的全部事件按第 2 步的版本一次性追加到仓库。
+6. 用最新状态为这名真人生成视图并返回。
+
+bot 的随机数由“房间种子、席位、当前版本”派生，所以同一个种子加同样的真人操作会重现同一局。
+
+### 2.3 谁能看见什么
+
+| 你的角色 | 你知道 |
+| --- | --- |
+| 梅林 | 哪些人是邪恶方（看不到莫德雷德），不知道具体角色 |
+| 派西维尔 | 梅林和莫甘娜是哪两个人，分不清谁是谁 |
+| 邪恶方（奥伯伦除外） | 彼此是邪恶方（看不到奥伯伦） |
+| 奥伯伦、忠臣 | 什么都不知道 |
+
+所有人始终知道自己的角色。对局结束后公开全部角色。组队投票在全员投完前只公开“谁投了”，不公开投了什么；任务牌永远只公开失败票的数量。
+
+响应由 `PlayerView` 转换而来，从不直接序列化 `GameState`。种子不出现在任何响应里。
