@@ -24,14 +24,13 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
 ```
 
-前端（Node 24，pnpm 由 corepack 提供）：
+前端（Node 22 或 24 均可，CI 和容器用 24；pnpm 由 Node 自带的 corepack 提供，不用单独安装）：
 
 ```powershell
 cd apps/web
-corepack enable
-pnpm install
-pnpm test
-pnpm dev
+corepack pnpm install
+corepack pnpm test
+corepack pnpm dev
 ```
 
 打开 <http://localhost:5173>。页面请求 `/api/health`，由 Vite 代理转发到后端；后端不在 `http://127.0.0.1:8000` 时用环境变量 `API_PROXY_TARGET` 指定。
