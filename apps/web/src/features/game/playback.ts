@@ -93,12 +93,18 @@ export const CATCH_UP_DELAY_MS = 250;
  * The table as it stood after the first `shown` steps: the same shape the
  * server sends, rebuilt from the public record. Nothing can be done from a
  * past position, so it has no legal actions, and it shows no role the final
- * position revealed.
+ * position revealed, unless `reveal` asks for every role from the start (a replay).
  */
-export function sceneAt(game: Game, steps: readonly Step[], shown: number): Game {
+export function sceneAt(
+  game: Game,
+  steps: readonly Step[],
+  shown: number,
+  reveal = false,
+): Game {
   if (shown >= steps.length) {
     return game;
   }
+  const known = (player: Game["players"][number]) => reveal || player.is_you || game.spectator;
 
   const bySeat = [...game.players].sort((a, b) => a.seat - b.seat);
   const nextLeader = (id: string | null): string | null => {
@@ -205,8 +211,8 @@ export function sceneAt(game: Game, steps: readonly Step[], shown: number): Game
       is_leader: player.id === leader,
       thinking: false,
       // A spectator knew every role all along; a player only their own.
-      role: player.is_you || game.spectator ? player.role : null,
-      alignment: player.is_you || game.spectator ? player.alignment : null,
+      role: known(player) ? player.role : null,
+      alignment: known(player) ? player.alignment : null,
     })),
     missions,
     current_mission_number: current,

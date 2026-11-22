@@ -22,7 +22,7 @@ def test_no_random_action_exists_after_the_game_ends() -> None:
 
 def test_every_event_type_can_be_printed() -> None:
     seen: set[type] = set()
-    for player_count in range(5, 11):
+    for player_count in range(5, 13):
         for seed in range(30):
             for event in play_random_game(player_count=player_count, seed=seed).events:
                 assert format_event(event).startswith(type(event).__name__)

@@ -180,7 +180,32 @@ OFFICIAL = RuleSet(
     },
 )
 
-RULESETS: Mapping[str, RuleSet] = MappingProxyType({OFFICIAL.id: OFFICIAL})
+_FOURTH_AND_FIFTH_NEED_TWO = (1, 1, 1, 2, 2)
+
+EXTENDED = RuleSet(
+    id="extended",
+    name="Avalon with house rules for 11-12 players",
+    official=False,
+    source=(
+        "Official tables for 5-10 players. 11 and 12 players are a house rule: about a third "
+        "of the table is evil, teams grow by one over the ten-player table, and the later "
+        "missions need two fails so a crowded team cannot be failed by one hidden player."
+    ),
+    tables={
+        **OFFICIAL.tables,
+        11: _official(7, 4, (4, 5, 4, 5, 5), _FOURTH_NEEDS_TWO),
+        12: _official(7, 5, (4, 5, 5, 6, 6), _FOURTH_AND_FIFTH_NEED_TWO),
+    },
+)
+
+RULESETS: Mapping[str, RuleSet] = MappingProxyType({OFFICIAL.id: OFFICIAL, EXTENDED.id: EXTENDED})
+
+
+def ruleset_for(player_count: int, preferred: RuleSet = OFFICIAL) -> RuleSet:
+    """`preferred` when it covers this many players, else the house rules if they do."""
+    if player_count in preferred.tables or player_count not in EXTENDED.tables:
+        return preferred
+    return EXTENDED
 
 
 def get_ruleset(ruleset_id: str) -> RuleSet:

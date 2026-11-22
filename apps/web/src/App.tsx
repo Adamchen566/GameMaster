@@ -1,12 +1,14 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 
-import { ApiError, createRoom, getConfig, getGame, submitAction } from "./api/client";
-import type { ActionRequest, RoomOptions, ServerConfig } from "./api/client";
+import { ApiError, createRoom, getConfig, getGame, getReplay, submitAction } from "./api/client";
+import type { ActionRequest, Replay, RoomOptions, ServerConfig, Session } from "./api/client";
 import { GamePage } from "./features/game/GamePage";
 import { gameReducer, initialState } from "./features/game/gameReducer";
 import { describeError } from "./features/game/labels";
 import { LobbyPage, NO_MODELS } from "./features/lobby/LobbyPage";
-import { clearSession, loadSession, saveSession } from "./session";
+import { ReplayPage } from "./features/replay/ReplayPage";
+import { clearSession, loadHistory, loadSession, rememberGame, saveSession } from "./session";
+import type { PastGame } from "./session";
 import "./styles.css";
 
 export const POLL_INTERVAL_MS = 1500;
@@ -18,6 +20,11 @@ export default function App() {
   // Guards against a second click landing before the first re-render.
   const busy = useRef(false);
   const [config, setConfig] = useState<ServerConfig>(NO_MODELS);
+  const [history, setHistory] = useState<PastGame[]>(loadHistory);
+  // A replay is looked at, not played: it sits on top of whatever screen is open.
+  const [replay, setReplay] = useState<
+    { session: Session; data: Replay | null; error: string | null } | null
+  >(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -113,6 +120,15 @@ export default function App() {
       const room = await createRoom(nickname, playerCount, options);
       const session = { gameId: room.game_id, token: room.token };
       saveSession(session);
+      setHistory(
+        rememberGame({
+          ...session,
+          createdAt: new Date().toISOString(),
+          playerCount,
+          nickname,
+          spectate: options.spectate,
+        }),
+      );
       dispatch({ type: "room_created", session, game: room.game });
     } catch (error) {
       dispatch({ type: "create_failed", message: describeError(error) });
@@ -144,9 +160,55 @@ export default function App() {
     }
   }
 
+  function openReplay(session: Session) {
+    setReplay({ session, data: null, error: null });
+    getReplay(session)
+      .then((data) => setReplay({ session, data, error: null }))
+      .catch((error: unknown) => setReplay({ session, data: null, error: describeError(error) }));
+  }
+
+  function resumeFromReplay(session: Session) {
+    setReplay(null);
+    saveSession(session);
+    dispatch({ type: "resume", session });
+  }
+
   function handleLeave() {
     clearSession();
     dispatch({ type: "left_game" });
+  }
+
+  if (replay !== null) {
+    if (replay.data !== null) {
+      return <ReplayPage replay={replay.data} onLeave={() => setReplay(null)} />;
+    }
+    return (
+      <main className="page page--narrow">
+        {replay.error === null ? (
+          <p role="status">正在读取对局记录…</p>
+        ) : (
+          <div className="card">
+            <p className="alert alert--danger" role="alert">
+              {replay.error}
+            </p>
+            <div className="actions__row">
+              <button type="button" className="button button--ghost" onClick={() => setReplay(null)}>
+                回到大厅
+              </button>
+              {state.screen === "lobby" && (
+                <button
+                  type="button"
+                  className="button button--primary"
+                  onClick={() => resumeFromReplay(replay.session)}
+                >
+                  回到这一局
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </main>
+    );
   }
 
   switch (state.screen) {
@@ -157,6 +219,8 @@ export default function App() {
           error={state.error}
           config={config}
           onCreate={handleCreate}
+          history={history}
+          onReplay={(game) => openReplay({ gameId: game.gameId, token: game.token })}
         />
       );
     case "resuming":
@@ -175,6 +239,7 @@ export default function App() {
           onToggleTeam={(playerId) => dispatch({ type: "team_toggled", playerId })}
           onAction={handleAction}
           onLeave={handleLeave}
+          onReplay={() => openReplay(state.session)}
         />
       );
   }

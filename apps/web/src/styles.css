@@ -1111,3 +1111,144 @@ input[aria-invalid="true"] {
     animation: none;
   }
 }
+
+/* Eleven or twelve seats: narrower cards so neighbours do not overlap. */
+.table--crowded .seat {
+  width: 124px;
+  font-size: 13px;
+}
+
+/* --- Recent games and the replay ------------------------------------------------ */
+
+.history {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+}
+
+.history__game {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+}
+
+.replay {
+  display: grid;
+  gap: 12px;
+}
+
+.replay__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.replay__speed {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  color: var(--text-secondary);
+}
+
+.replay__scrub {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.replay__scrub input {
+  width: 100%;
+  accent-color: var(--primary);
+}
+
+.turns {
+  display: grid;
+  gap: 12px;
+  list-style: none;
+}
+
+.turn {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+}
+
+.turn__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.turn__rejected {
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.turn__raw summary {
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.turn__raw pre {
+  max-height: 320px;
+  margin-top: 6px;
+  padding: 8px;
+  overflow: auto;
+  border-radius: var(--radius-sm);
+  background: var(--bg-base);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.answer {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 4px 12px;
+  font-size: 14px;
+}
+
+.answer dt {
+  color: var(--text-muted);
+}
+
+.totals {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.totals th,
+.totals td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: left;
+}
+
+.totals td {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 860px) {
+  .replay__speed {
+    margin-left: 0;
+  }
+
+  .answer {
+    grid-template-columns: 1fr;
+  }
+}

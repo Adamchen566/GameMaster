@@ -27,7 +27,8 @@ export type AppAction =
   | { type: "action_started" }
   | { type: "action_failed"; message: string }
   | { type: "team_toggled"; playerId: string }
-  | { type: "left_game" };
+  | { type: "left_game" }
+  | { type: "resume"; session: Session };
 
 const LOBBY: AppState = { screen: "lobby", creating: false, error: null };
 
@@ -37,6 +38,9 @@ export function initialState(session: Session | null): AppState {
 
 export function gameReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
+    case "resume":
+      return state.screen === "lobby" ? { screen: "resuming", session: action.session } : state;
+
     case "create_started":
       return state.screen === "lobby" ? { ...state, creating: true, error: null } : state;
 

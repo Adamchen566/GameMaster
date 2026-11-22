@@ -117,6 +117,24 @@ PERSONAS: tuple[Persona, ...] = (
         1.05,
         0.9,
     ),
+    Persona(
+        "Pellinore",
+        "固执的老骑士",
+        "年长、固执，爱拿前几轮的旧账说事，一旦认定谁可疑就很难改口。",
+        "Old and stubborn. Brings up what happened rounds ago and rarely lets go of a suspicion.",
+        "#a0785a",
+        0.75,
+        0.85,
+    ),
+    Persona(
+        "Dagonet",
+        "爱开玩笑的弄臣",
+        "轻松、爱开玩笑，用玩笑话试探别人，真正表态时却很认真。",
+        "Light-hearted jester. Tests people with jokes, but means it when he finally takes a side.",
+        "#e3b341",
+        1.2,
+        1.2,
+    ),
 )
 
 BOT_NAMES: tuple[str, ...] = tuple(persona.name for persona in PERSONAS)

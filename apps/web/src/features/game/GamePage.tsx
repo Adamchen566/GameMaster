@@ -27,6 +27,8 @@ interface GamePageProps {
   onToggleTeam: (playerId: string) => void;
   onAction: (action: ActionRequest) => void;
   onLeave: () => void;
+  /** Open the step-by-step replay of this game, once it is over. */
+  onReplay?: () => void;
 }
 
 export function GamePage(props: GamePageProps) {
@@ -143,7 +145,7 @@ export function GamePage(props: GamePageProps) {
   );
 }
 
-function Result({ game }: { game: Game }) {
+export function Result({ game }: { game: Game }) {
   if (game.winner === null || game.win_reason === null) {
     return null;
   }
@@ -167,7 +169,7 @@ export function seatPosition(offset: number, count: number): { left: number; top
   return { left: 50 + 43 * Math.cos(angle), top: 50 + 41 * Math.sin(angle) };
 }
 
-function RoundTable({
+export function RoundTable({
   game,
   nameOf,
   playback,
@@ -188,7 +190,7 @@ function RoundTable({
   };
 
   return (
-    <div className="table">
+    <div className={count > 10 ? "table table--crowded" : "table"}>
       <section className="table__centre" aria-labelledby="missions-title">
         <h2 id="missions-title">任务</h2>
         <ol className="missions">
@@ -259,7 +261,7 @@ const TRACK: { phase: Phase; name: string }[] = [
 ];
 
 /** Where the round is: every mission goes through the same four stages. */
-function PhaseTrack({ phase }: { phase: Phase }) {
+export function PhaseTrack({ phase }: { phase: Phase }) {
   if (!TRACK.some((stage) => stage.phase === phase)) {
     return null;
   }
@@ -284,7 +286,7 @@ interface Line {
   tone: "neutral" | "good" | "evil";
 }
 
-function describeStep(step: Step, game: Game, nameOf: (id: string) => string): Line {
+export function describeStep(step: Step, game: Game, nameOf: (id: string) => string): Line {
   const names = (ids: string[]) => ids.map(nameOf).join("、");
   switch (step.kind) {
     case "mission_started":
@@ -504,7 +506,7 @@ function SeatCard({
   );
 }
 
-function SpeechLog({ game, nameOf }: { game: Game; nameOf: (id: string) => string }) {
+export function SpeechLog({ game, nameOf }: { game: Game; nameOf: (id: string) => string }) {
   return (
     <section className="card" aria-labelledby="speech-title">
       <h2 id="speech-title">本轮发言</h2>
@@ -526,7 +528,7 @@ function SpeechLog({ game, nameOf }: { game: Game; nameOf: (id: string) => strin
 }
 
 /** What each AI seat really thought: live for a spectator, a review once the game is over. */
-function Thoughts({
+export function Thoughts({
   thoughts,
   nameOf,
   finished,
@@ -565,7 +567,7 @@ const THOUGHTS_SHOWN = 8;
 type ActionPanelProps = GamePageProps & { nameOf: (id: string) => string; playback: Playback };
 
 function ActionPanel(props: ActionPanelProps) {
-  const { game, pending, onAction, onLeave, playback } = props;
+  const { game, pending, onAction, onLeave, onReplay, playback } = props;
   const legal = game.legal_actions[0];
 
   if (playback.playing) {
@@ -584,9 +586,16 @@ function ActionPanel(props: ActionPanelProps) {
     return (
       <div className="actions">
         <p>这一局结束了，所有身份已公开。</p>
-        <button type="button" className="button button--primary" onClick={onLeave}>
-          再来一局
-        </button>
+        <div className="actions__row">
+          <button type="button" className="button button--primary" onClick={onLeave}>
+            再来一局
+          </button>
+          {onReplay !== undefined && (
+            <button type="button" className="button button--secondary" onClick={onReplay}>
+              从头回放
+            </button>
+          )}
+        </div>
       </div>
     );
   }

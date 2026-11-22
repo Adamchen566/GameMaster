@@ -66,9 +66,12 @@ def test_one_suite_can_be_run_alone(capsys: pytest.CaptureFixture[str]) -> None:
     assert "Player decisions" not in out and "Whole games" not in out
 
 
-def test_paid_provider_needs_explicit_confirmation(capsys: pytest.CaptureFixture[str]) -> None:
+@pytest.mark.parametrize("provider", ["anthropic", "deepseek"])
+def test_paid_provider_needs_explicit_confirmation(
+    capsys: pytest.CaptureFixture[str], provider: str
+) -> None:
     with pytest.raises(SystemExit) as stopped:
-        main(["--provider", "anthropic"])
+        main(["--provider", provider])
 
     assert stopped.value.code == 2
     assert "--confirm-cost" in capsys.readouterr().err
@@ -102,3 +105,25 @@ def test_broken_invariants_are_named_and_fail_the_run() -> None:
     assert len(failures) == 7
     assert "illegal action" in failures[0]
     assert "role:merlin" in failures[1]
+
+
+def test_a_local_client_waits_as_long_as_the_seat_would() -> None:
+    from app.config import Settings
+    from app.evals.run import timeouts
+
+    settings = Settings(codex_timeout_seconds=90.0, llm_player_timeout_seconds=8.0)
+
+    assert timeouts("codex", settings) == (90.0, 90.0)
+    assert timeouts("scripted", settings)[0] == 8.0
+
+
+def test_a_local_client_that_is_missing_stops_the_run_with_the_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.agents import codex_model
+
+    monkeypatch.setattr(codex_model, "find_codex", lambda: None)
+    with pytest.raises(SystemExit) as stopped:
+        main(["--provider", "codex", "--suites", "players", "--limit", "1"])
+
+    assert "codex_not_installed" in str(stopped.value.code)
