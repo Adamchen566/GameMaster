@@ -114,15 +114,16 @@
 
 **验收：** 服务重启后刷新页面能回到同一局；ER 图；回放一致性测试。
 
-### v0.5 上线（2026-11-22 暂时跳过）
+### v0.5 上线（2026-11-22 先跳过，同日本人要求部署）
 
-按原 Task 9 执行。本人决定先跳过上线、继续开发 v0.6；下面的条目保留，回头再做。
+按原 Task 9 执行。实际部署到本人已有的腾讯云香港服务器，而不是 Render / Railway / Fly.io：那台机器已经用 Caddy 服务本人的其他站点，没有 Docker，所以用 systemd + venv + Caddy 静态文件。说明见 [`runbook.md`](runbook.md)。
 
 - [ ] CI 补齐：Playwright 单浏览器冒烟（1 真人 + bot 一局）、镜像 build。
 - [ ] 两个 Dockerfile：非 root 用户 + healthcheck；前端构建不嵌入服务端密钥。
-- [ ] 选定一个平台（Render / Railway / Fly.io），配置 PostgreSQL、API、web、HTTPS、允许来源。
+- [x] 平台：腾讯云香港服务器，`avalon.jiashao.tech`；SQLite、API、web、HTTPS（Caddy 自动证书）；前后端同源，不需要配置允许来源。
+- [x] 公开服务器上的费用上限：每局和每天（全站）的 token 上限，线上只开 DeepSeek。
 - [ ] 健康检查区分进程存活与数据库就绪。
-- [ ] `docs/runbook.md`：部署、迁移、看日志、轮换密钥、回滚、恢复备份。
+- [x] [`runbook.md`](runbook.md)：部署、迁移、看日志、换密钥、回滚、备份；`deploy/deploy.sh` 一条命令部署和回滚，新版本不答复健康检查时自动切回。
 - [ ] 回滚演练一次并留证。
 
 **验收：** 公开 URL 上从空数据库完成 1 真人 + 4 bot 一局；绿色流水线；回滚记录。

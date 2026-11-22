@@ -1,0 +1,3 @@
+# Shipped to a Linux server as is: bash and systemd need LF line endings.
+*.sh text eol=lf
+deploy/** text eol=lf

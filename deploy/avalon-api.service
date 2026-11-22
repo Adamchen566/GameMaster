@@ -1,0 +1,25 @@
+# /etc/systemd/system/avalon-api.service
+[Unit]
+Description=Avalon AI Game Master API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=avalon
+Group=avalon
+WorkingDirectory=/opt/avalon/app/apps/api
+EnvironmentFile=/opt/avalon/api.env
+# Only Caddy on this machine talks to it.
+ExecStart=/opt/avalon/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 4177 --no-server-header
+Restart=always
+RestartSec=3
+# The service writes only its SQLite database, under data/.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/avalon/data
+MemoryMax=400M
+
+[Install]
+WantedBy=multi-user.target

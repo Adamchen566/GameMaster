@@ -55,7 +55,11 @@ def build_ai(settings: Settings, model: ModelClient | None = None) -> dict[str, 
         if input_price is not None and output_price is not None
         else None
     )
-    budget = TokenBudget(settings.llm_max_tokens_per_game, pricing)
+    budget = TokenBudget(
+        settings.llm_max_tokens_per_game,
+        pricing,
+        max_tokens_per_day=settings.llm_max_tokens_per_day,
+    )
     # The default model of seats made without a choice: only a paid API is held to the ceiling.
     seat_budget = budget if seat_driver.metered else TokenBudget(UNMETERED_TOKENS)
     return {
