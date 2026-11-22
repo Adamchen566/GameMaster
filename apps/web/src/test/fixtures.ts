@@ -33,6 +33,7 @@ export function makeGame(overrides: Partial<Game> = {}): Game {
     room_code: "ABC234",
     gm: "template",
     announcements: [],
+    log: [],
     ai_usage: { calls: 0, input_tokens: 0, output_tokens: 0, cost_usd: null },
     version: 8,
     phase: "team_vote",

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { CSSProperties } from "react";
 
-import type { ActionRequest, Game, LegalAction, Mission, Player } from "../../api/client";
+import type { ActionRequest, Game, LegalAction, Mission, Phase, Player } from "../../api/client";
 import {
   ALIGNMENT_NAMES,
   FALLBACK_REASONS,
@@ -11,6 +11,8 @@ import {
   SEEN_AS_NAMES,
   WIN_REASONS,
 } from "./labels";
+import { usePlayback } from "./playback";
+import type { Playback, Step } from "./playback";
 
 const SPEECH_LIMIT = 200;
 const MAX_SUSPECTS = 3;
@@ -26,7 +28,10 @@ interface GamePageProps {
 }
 
 export function GamePage(props: GamePageProps) {
-  const { game, error, onLeave } = props;
+  const { error, onLeave } = props;
+  // What is drawn is the table at the step being replayed, not always the latest position.
+  const playback = usePlayback(props.game);
+  const game = playback.scene;
   const names = new Map(game.players.map((player) => [player.id, player.name]));
   const nameOf = (id: string) => names.get(id) ?? id;
   const me = game.players.find((player) => player.is_you);
@@ -37,20 +42,22 @@ export function GamePage(props: GamePageProps) {
         <div>
           <p className="eyebrow">房间 {game.room_code}</p>
           <h1>{PHASE_NAMES[game.phase]}</h1>
+          <PhaseTrack phase={game.phase} />
         </div>
         <button type="button" className="button button--ghost" onClick={onLeave}>
           离开对局
         </button>
       </header>
 
-      {game.phase === "finished" && <Result game={game} />}
+      <RoundTable game={game} nameOf={nameOf} playback={playback} />
 
-      <RoundTable game={game} nameOf={nameOf} />
+      {/* Below the table, so the table itself never moves when the game ends. */}
+      {game.phase === "finished" && <Result game={game} />}
 
       <div className="below-table">
         <section className="card" aria-labelledby="action-title">
           <h2 id="action-title">你的操作</h2>
-          <ActionPanel {...props} nameOf={nameOf} />
+          <ActionPanel {...props} game={game} nameOf={nameOf} playback={playback} />
           {error !== null && (
             <p className="alert alert--danger" role="alert">
               {error}
@@ -119,7 +126,15 @@ export function seatPosition(offset: number, count: number): { left: number; top
   return { left: 50 + 43 * Math.cos(angle), top: 50 + 41 * Math.sin(angle) };
 }
 
-function RoundTable({ game, nameOf }: { game: Game; nameOf: (id: string) => string }) {
+function RoundTable({
+  game,
+  nameOf,
+  playback,
+}: {
+  game: Game;
+  nameOf: (id: string) => string;
+  playback: Playback;
+}) {
   const count = game.players.length;
   const mySeat = game.players.find((player) => player.is_you)?.seat ?? 0;
   const speeches = new Map(game.speeches.map((speech) => [speech.player_id, speech]));
@@ -145,6 +160,7 @@ function RoundTable({ game, nameOf }: { game: Game; nameOf: (id: string) => stri
             提名队伍：<strong>{game.proposed_team.map(nameOf).join("、")}</strong>
           </p>
         )}
+        <Stage game={game} nameOf={nameOf} playback={playback} />
       </section>
 
       <ul className="table__seats" aria-label="座位">
@@ -157,11 +173,140 @@ function RoundTable({ game, nameOf }: { game: Game; nameOf: (id: string) => stri
               player={player}
               game={game}
               speech={speeches.get(player.id)?.text}
+              beat={playback.beat}
               style={style}
             />
           );
         })}
       </ul>
+    </div>
+  );
+}
+
+const TRACK: { phase: Phase; name: string }[] = [
+  { phase: "team_proposal", name: "组队" },
+  { phase: "discussion", name: "发言" },
+  { phase: "team_vote", name: "投票" },
+  { phase: "mission_vote", name: "任务" },
+];
+
+/** Where the round is: every mission goes through the same four stages. */
+function PhaseTrack({ phase }: { phase: Phase }) {
+  if (!TRACK.some((stage) => stage.phase === phase)) {
+    return null;
+  }
+  return (
+    <ol className="track" aria-label="本轮进度">
+      {TRACK.map((stage) => (
+        <li
+          key={stage.phase}
+          className="track__stage"
+          aria-current={stage.phase === phase ? "step" : undefined}
+        >
+          {stage.name}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+interface Line {
+  title: string;
+  body: string;
+  tone: "neutral" | "good" | "evil";
+}
+
+function describeStep(step: Step, game: Game, nameOf: (id: string) => string): Line {
+  const names = (ids: string[]) => ids.map(nameOf).join("、");
+  switch (step.kind) {
+    case "mission_started":
+      return {
+        title: `任务 ${step.mission} 开始`,
+        body: `队长是 ${nameOf(step.leader)}，由队长挑选队伍。`,
+        tone: "neutral",
+      };
+    case "team_proposed":
+      return {
+        title: `${nameOf(step.leader)} 提名了队伍`,
+        body: `${names(step.team)}。从队长开始，每人说一次。`,
+        tone: "neutral",
+      };
+    case "speech": {
+      const suspects = step.suspects.length > 0 ? `（点名怀疑：${names(step.suspects)}）` : "";
+      return {
+        title: `${nameOf(step.player)} 发言`,
+        body: `${step.text === "" ? "过。" : step.text}${suspects}`,
+        tone: "neutral",
+      };
+    }
+    case "voting_opens":
+      return {
+        title: "发言结束，开始投票",
+        body: `是否派出 ${names(step.team)}？`,
+        tone: "neutral",
+      };
+    case "team_vote":
+      return {
+        title: step.approved ? "投票通过" : "投票否决",
+        body: `赞成 ${step.approvals.length} 票，反对 ${step.rejections.length} 票。${
+          step.approved ? "" : "队长顺时针移交给下一位。"
+        }`,
+        tone: step.approved ? "good" : "evil",
+      };
+    case "team_departs":
+      return {
+        title: "队伍出发",
+        body: `${names(step.team)} 正在执行任务 ${step.mission}，各自暗中出牌。`,
+        tone: "neutral",
+      };
+    case "mission_result":
+      return {
+        title: `任务 ${step.mission} ${step.outcome === "success" ? "成功" : "失败"}`,
+        body: `翻出 ${step.fail_votes} 张失败牌。`,
+        tone: step.outcome === "success" ? "good" : "evil",
+      };
+    case "assassination_started":
+      return {
+        title: "正义方完成了三次任务",
+        body: "刺客还有最后一次机会：找出梅林。",
+        tone: "evil",
+      };
+    case "assassination":
+      return {
+        title: "刺客出手",
+        body: `指认 ${nameOf(step.target)} 是梅林。`,
+        tone: "evil",
+      };
+    case "game_finished":
+      return {
+        title: `${ALIGNMENT_NAMES[step.winner]}获胜`,
+        body: `${WIN_REASONS[step.reason]}。`,
+        tone: step.winner,
+      };
+  }
+}
+
+/** The one thing happening at the table right now, in the middle of it. */
+function Stage({
+  game,
+  nameOf,
+  playback,
+}: {
+  game: Game;
+  nameOf: (id: string) => string;
+  playback: Playback;
+}) {
+  const line = playback.beat === null ? null : describeStep(playback.beat, game, nameOf);
+
+  return (
+    <div className="stage" aria-live="polite">
+      {line !== null && (
+        // Keyed by step so each one arrives with its own entrance.
+        <p key={playback.beatIndex} className={`stage__line stage__line--${line.tone}`}>
+          <strong>{line.title}</strong>
+          <span>{line.body}</span>
+        </p>
+      )}
     </div>
   );
 }
@@ -195,11 +340,13 @@ function SeatCard({
   player,
   game,
   speech,
+  beat,
   style,
 }: {
   player: Player;
   game: Game;
   speech: string | undefined;
+  beat: Step | null;
   style: CSSProperties;
 }) {
   const playing = game.phase !== "finished";
@@ -208,8 +355,11 @@ function SeatCard({
   const onMission = game.phase === "mission_vote" && (mission?.team.includes(player.id) ?? false);
   const speaking = game.speaker_id === player.id;
   const lastVote = game.last_team_vote;
-  // Only while the table is choosing the next team: afterwards it is old news.
-  const showLastVote = lastVote !== null && game.phase === "team_proposal";
+  // The moment the ballots are turned over, and while the team sets off.
+  const counting = beat?.kind === "team_vote" || beat?.kind === "team_departs";
+  // After that only while the table is choosing the next team: later it is old news.
+  const showLastVote = lastVote !== null && (counting || game.phase === "team_proposal");
+  const voteWord = counting ? "" : "上轮";
   const classes = [
     "seat",
     player.is_you ? "seat--you" : "",
@@ -248,10 +398,10 @@ function SeatCard({
           <span className="badge">已出牌</span>
         )}
         {showLastVote && lastVote.approvals.includes(player.id) && (
-          <span className="badge badge--good">上轮赞成</span>
+          <span className="badge badge--good">{voteWord}赞成</span>
         )}
         {showLastVote && lastVote.rejections.includes(player.id) && (
-          <span className="badge badge--evil">上轮反对</span>
+          <span className="badge badge--evil">{voteWord}反对</span>
         )}
         {player.seen_as !== null && (
           <span className="badge badge--known">你知道：{SEEN_AS_NAMES[player.seen_as]}</span>
@@ -292,12 +442,24 @@ function SpeechLog({ game, nameOf }: { game: Game; nameOf: (id: string) => strin
 
 // --- What you can do ---------------------------------------------------------
 
-type ActionPanelProps = GamePageProps & { nameOf: (id: string) => string };
+type ActionPanelProps = GamePageProps & { nameOf: (id: string) => string; playback: Playback };
 
 function ActionPanel(props: ActionPanelProps) {
-  const { game, pending, onAction, onLeave } = props;
+  const { game, pending, onAction, onLeave, playback } = props;
   const legal = game.legal_actions[0];
 
+  if (playback.playing) {
+    return (
+      <div className="actions">
+        <p className="muted" role="status">
+          桌上正在进行，轮到你时这里会出现操作。
+        </p>
+        <button type="button" className="button button--ghost" onClick={playback.skip}>
+          跳过，直接看现在
+        </button>
+      </div>
+    );
+  }
   if (game.phase === "finished") {
     return (
       <div className="actions">

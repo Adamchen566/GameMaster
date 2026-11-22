@@ -95,6 +95,8 @@ class Snapshot:
     agents: Mapping[str, AgentState]
     """Only `last_source` and `last_fallback_reason` may be shown; `note` is private."""
     announcements: tuple[Narration, ...]
+    log: tuple[PublicEntry, ...]
+    """Everything that has happened in the open, oldest first. The client replays it step by step."""
     usage: Usage
     cost_usd: float | None
 
@@ -264,6 +266,7 @@ class GameService:
             thinking=thinking,
             agents=agents,
             announcements=self._announcements(room, events),
+            log=public_log(events),
             usage=self._budget.usage(room.game_id) if self._budget else Usage(),
             cost_usd=self._budget.cost(room.game_id) if self._budget else None,
         )

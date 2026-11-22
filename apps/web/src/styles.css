@@ -768,3 +768,164 @@ input[aria-invalid="true"] {
     grid-template-columns: 1fr;
   }
 }
+
+/* --- Pacing: one thing at a time, and nothing appears without arriving ------ */
+
+/* The four stages every round goes through, under the phase name. */
+.track {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  list-style: none;
+}
+
+.track__stage {
+  padding: 2px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  font-size: 12px;
+  transition:
+    color 0.35s ease,
+    background-color 0.35s ease,
+    border-color 0.35s ease;
+}
+
+.track__stage[aria-current="step"] {
+  border-color: var(--primary);
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+/* The step on the table right now. Its height is reserved so the cards above never shift. */
+.stage {
+  display: grid;
+  align-content: start;
+  width: 100%;
+  min-height: 84px;
+}
+
+.stage__line {
+  display: grid;
+  gap: 2px;
+  padding: 8px 14px;
+  border-left: 3px solid var(--primary);
+  border-radius: var(--radius-md);
+  background: rgba(20, 19, 15, 0.72);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: left;
+  animation: stage-in 0.45s ease both;
+}
+
+.stage__line strong {
+  color: var(--primary);
+  font-family: var(--font-display);
+  font-size: 15px;
+}
+
+.stage__line--good {
+  border-left-color: var(--success);
+}
+
+.stage__line--good strong {
+  color: var(--success);
+}
+
+.stage__line--evil {
+  border-left-color: var(--danger);
+}
+
+.stage__line--evil strong {
+  color: var(--danger);
+}
+
+@keyframes stage-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* Seats and cards change state by easing into it. */
+.seat {
+  transition:
+    border-color 0.35s ease,
+    box-shadow 0.35s ease,
+    background-color 0.35s ease;
+}
+
+.seat .badge,
+.seat__speech {
+  animation: pop-in 0.35s ease both;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    scale: 0.9;
+  }
+}
+
+/* Earlier speeches step back; the one being said stands out. */
+.seat__speech {
+  opacity: 0.72;
+  transition: opacity 0.35s ease;
+}
+
+.seat--speaking .seat__speech,
+.seat:hover .seat__speech {
+  z-index: 4;
+  opacity: 1;
+}
+
+.mission {
+  transition:
+    transform 0.4s ease,
+    border-color 0.4s ease,
+    background-color 0.4s ease,
+    box-shadow 0.4s ease;
+}
+
+/* A mission card turning over when its result is read out. */
+.mission--success,
+.mission--fail {
+  animation: card-flip 0.7s ease both;
+}
+
+@keyframes card-flip {
+  from {
+    transform: rotateY(90deg);
+  }
+}
+
+.below-table .card,
+.result,
+.page {
+  animation: stage-in 0.4s ease both;
+}
+
+/* The action card keeps its size while the table plays, so nothing below it jumps. */
+.below-table .actions {
+  min-height: 96px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage__line,
+  .seat .badge,
+  .seat__speech,
+  .mission--success,
+  .mission--fail,
+  .below-table .card,
+  .result,
+  .page {
+    animation: none;
+  }
+
+  .seat,
+  .seat__speech,
+  .mission,
+  .track__stage {
+    transition: none;
+  }
+}
