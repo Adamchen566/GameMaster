@@ -7,7 +7,7 @@ bots and models are only ever given a view, never the state.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 
 from app.game.errors import ErrorCode, RuleViolation
@@ -146,6 +146,32 @@ def build_player_view(state: GameState, player_id: str) -> PlayerView:
         winner=state.winner,
         win_reason=state.win_reason,
         legal_actions=legal_actions(state, viewer.id),
+    )
+
+
+def build_spectator_view(state: GameState) -> PlayerView:
+    """The game as someone outside the table sees it: every role, and nothing to do.
+
+    A spectator has no seat, so `you_id` is empty. The only thing a spectator may do
+    is start the game they set up, which is offered while it is in the lobby.
+    """
+    host = build_player_view(state, state.host_id)
+    return replace(
+        host,
+        you_id="",
+        players=tuple(
+            PlayerInfo(
+                id=player.id,
+                seat=player.seat,
+                role=player.role,
+                alignment=player.role.alignment if player.role is not None else None,
+                seen_as=None,
+            )
+            for player in state.players
+        ),
+        your_team_vote=None,
+        your_mission_card=None,
+        legal_actions=tuple(legal for legal in host.legal_actions if legal.type == "start_game"),
     )
 
 

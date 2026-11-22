@@ -462,3 +462,73 @@ def choose_action(
         case other:
             # Starting the game is the host's decision, and the host is a human.
             raise ValueError(f"The table bot cannot perform '{other}'.")
+
+
+def inner_thought(
+    view: PlayerView,
+    *,
+    history: Sequence[PublicEntry] = (),
+    names: Mapping[str, str] | None = None,
+    language: Language = "zh",
+    salt: str | None = None,
+) -> str:
+    """What the bot in this seat really believes right now, in one or two sentences.
+
+    Unlike its speech this is not filtered for what is safe to say: it names the
+    bot's side and what it knows. It is only ever shown to spectators and in the
+    review after the game.
+    """
+    mind = _Mind(view, history, salt if salt is not None else view.game_id)
+    zh = language == "zh"
+    labels = names or {}
+
+    def name(player_id: str) -> str:
+        return labels.get(player_id, player_id)
+
+    def listed(ids: Sequence[str]) -> str:
+        return ("、" if zh else ", ").join(name(player_id) for player_id in ids)
+
+    known = sorted(mind.known_evil)
+    parts: list[str] = []
+    if mind.evil:
+        if known:
+            parts.append(
+                f"我是邪恶方，同伴是 {listed(known)}。"
+                if zh
+                else f"I am evil, with {listed(known)}."
+            )
+        else:
+            parts.append("我是邪恶方。" if zh else "I am evil.")
+    elif known:
+        parts.append(
+            f"我知道 {listed(known)} 是邪恶方，但不能说得太明显。"
+            if zh
+            else f"I know {listed(known)} are evil, but I must not make that obvious."
+        )
+    else:
+        others = [player.id for player in view.players if player.id != mind.me]
+        top = max(others, key=mind.score)
+        if mind.odds[top] >= mind.starting_odds + DISTRUST_MARGIN:
+            parts.append(
+                f"我最怀疑 {name(top)}（{mind.odds[top]:.0%}）。"
+                if zh
+                else f"I suspect {name(top)} most ({mind.odds[top]:.0%})."
+            )
+        else:
+            parts.append("还没有可靠的线索。" if zh else "No solid lead yet.")
+
+    legal = view.legal_actions[0].type if view.legal_actions else ""
+    if legal == "speak" and view.proposed_team:
+        approve = mind.me == view.leader_id or mind.stance(view.proposed_team).approve
+        on_team = [member for member in view.proposed_team if member in mind.known_evil]
+        if mind.evil and on_team:
+            parts.append(
+                f"队里有同伴 {listed(on_team)}，我要让它通过。"
+                if zh
+                else f"{listed(on_team)} is on the team; I want it through."
+            )
+        elif approve:
+            parts.append("这一队我会投赞成。" if zh else "I will approve this team.")
+        else:
+            parts.append("这一队我会投反对。" if zh else "I will reject this team.")
+    return " ".join(parts) if not zh else "".join(parts)

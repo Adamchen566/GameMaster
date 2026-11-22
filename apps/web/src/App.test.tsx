@@ -100,7 +100,8 @@ describe("App", () => {
     expect(server.body("POST /api/rooms")).toEqual({
       nickname: "Adam",
       player_count: 5,
-      ai_seats: 0,
+      seats: ["bot", "bot", "bot", "bot"],
+      spectate: false,
       ai_style: "baseline",
       gm: "template",
       language: "zh",

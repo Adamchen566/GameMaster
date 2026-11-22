@@ -33,8 +33,12 @@ export interface Player {
   seat: number;
   name: string;
   is_bot: boolean;
-  /** Who plays a bot seat: the random bot or a language model. */
+  /** Who plays a bot seat: the built-in bot or a language model. */
   agent: "random" | "llm" | null;
+  /** Which model plays an AI seat; null is the server's default. */
+  driver: DriverId | null;
+  /** The character in a bot seat. Null for a person. */
+  persona: Persona | null;
   /** The game is waiting for this AI seat right now. */
   thinking: boolean;
   /** How this AI seat's latest turn was decided. */
@@ -48,6 +52,27 @@ export interface Player {
   alignment: Alignment | null;
   /** What your own role lets you know about this player. */
   seen_as: "evil" | "merlin_or_morgana" | null;
+}
+
+export type DriverId = "claude" | "deepseek" | "claude_code";
+/** Who plays one bot seat. */
+export type SeatChoice = "bot" | DriverId;
+
+export interface Persona {
+  title: string;
+  manner: string;
+  color: string;
+  /** Voice for read-aloud. */
+  pitch: number;
+  rate: number;
+}
+
+/** What an AI seat really thought when it acted. */
+export interface Thought {
+  /** Version of the game after the action it belongs to; a speech has the same one. */
+  version: number;
+  player_id: string;
+  text: string;
 }
 
 export type FallbackReason =
@@ -81,13 +106,35 @@ export interface AiUsage {
 }
 
 export interface RoomOptions {
-  aiSeats: number;
+  /** Who plays each bot seat, in seat order. */
+  seats: SeatChoice[];
+  /** Nobody sits down: you watch, and see every role. */
+  spectate: boolean;
   aiStyle: AiStyle;
   gm: GmMode;
 }
 
+export interface DriverStatus {
+  id: DriverId;
+  label: string;
+  available: boolean;
+  /** Why it cannot be used right now, as a short code. */
+  problem: string | null;
+}
+
+export interface SeatPersona {
+  name: string;
+  title: string;
+  manner: string;
+  color: string;
+}
+
 export interface ServerConfig {
   llm_available: boolean;
+  gm_ai_available: boolean;
+  drivers: DriverStatus[];
+  /** Who sits in the bot seats, in seat order. */
+  personas: SeatPersona[];
 }
 
 export interface Mission {
@@ -180,6 +227,10 @@ export interface Game {
   announcements: Announcement[];
   /** The public record, oldest first. The table replays it step by step. */
   log: LogEntry[];
+  /** You watch from outside the table: every role is shown and you have no seat. */
+  spectator: boolean;
+  /** What the AI seats really thought. Empty for a player until the game is over. */
+  thoughts: Thought[];
   ai_usage: AiUsage;
   version: number;
   phase: Phase;
@@ -273,19 +324,19 @@ function authorization(session: Session): Record<string, string> {
   return { Authorization: `Bearer ${session.token}` };
 }
 
-const DEFAULT_ROOM_OPTIONS: RoomOptions = { aiSeats: 0, aiStyle: "baseline", gm: "template" };
 
 export function createRoom(
   nickname: string,
   playerCount: number,
-  options: RoomOptions = DEFAULT_ROOM_OPTIONS,
+  options: RoomOptions,
 ): Promise<RoomCreated> {
   return request<RoomCreated>(
     "/rooms",
     json({
       nickname,
       player_count: playerCount,
-      ai_seats: options.aiSeats,
+      seats: options.seats,
+      spectate: options.spectate,
       ai_style: options.aiStyle,
       gm: options.gm,
       language: "zh",

@@ -8,6 +8,7 @@ from typing import Annotated, Any
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from app.agents.drivers import Driver, build_drivers, default_driver, narrator_driver
 from app.agents.llm_player import STYLES, LlmPlayer
 from app.agents.model import ModelClient, Pricing, TokenBudget
 from app.api.errors import ApiError
@@ -18,17 +19,27 @@ from app.storage.agent_states import SqlAgentStateStore
 from app.storage.database import Database
 from app.storage.games import SqlGameRepository
 from app.storage.rooms import SqlRoomStore
+from app.storage.thoughts import SqlThoughtStore
 
 
 def build_ai(settings: Settings, model: ModelClient | None = None) -> dict[str, Any]:
-    """The AI-related arguments of `GameService`. Empty when no model is configured."""
-    if model is None:
-        if settings.llm_provider != "anthropic":
-            return {}
-        # Imported here so the SDK is only loaded when it is used.
-        from app.agents.anthropic_model import AnthropicModel
+    """The AI-related arguments of `GameService`.
 
-        model = AnthropicModel(model=settings.llm_model, effort=settings.llm_effort)
+    `model` replaces every provider with one client, for tests and scripts.
+    """
+    if model is not None:
+        only = Driver("claude", "Claude", model, settings.llm_player_timeout_seconds)
+        drivers = {"claude": only}
+        seat_driver: Driver | None = only
+        narrator_model: ModelClient | None = model
+    else:
+        drivers = build_drivers(settings)
+        seat_driver = default_driver(drivers)
+        voice = narrator_driver(drivers)
+        narrator_model = voice.model if voice is not None else None
+    if seat_driver is None or seat_driver.model is None:
+        # Still passed on, so the lobby can say what each driver is missing.
+        return {"drivers": drivers}
 
     input_price, output_price = (
         settings.llm_input_price_per_mtok,
@@ -42,13 +53,18 @@ def build_ai(settings: Settings, model: ModelClient | None = None) -> dict[str, 
     budget = TokenBudget(settings.llm_max_tokens_per_game, pricing)
     return {
         "budget": budget,
+        "drivers": drivers,
         "llm_players": {
             style: LlmPlayer(
-                model, budget, style=style, timeout_seconds=settings.llm_player_timeout_seconds
+                seat_driver.model, budget, style=style, timeout_seconds=seat_driver.timeout_seconds
             )
             for style in STYLES
         },
-        "narrator": Narrator(model, budget, timeout_seconds=settings.llm_gm_timeout_seconds),
+        "narrator": (
+            Narrator(narrator_model, budget, timeout_seconds=settings.llm_gm_timeout_seconds)
+            if narrator_model is not None
+            else Narrator()
+        ),
     }
 
 
@@ -70,6 +86,7 @@ def build_service(
         SqlRoomStore(database),
         transaction=database.transaction,
         agent_states=SqlAgentStateStore(database),
+        thoughts=SqlThoughtStore(database),
         executor=executor,
         **ai,
     )

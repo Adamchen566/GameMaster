@@ -53,8 +53,14 @@ export function buildSteps(game: Game): Step[] {
   return steps;
 }
 
-/** How long a step stays on the table before the next one, in milliseconds. */
-export function stepDuration(step: Step): number {
+/**
+ * How long a step stays on the table before the next one, in milliseconds.
+ * `voiced`: the step is also being read aloud, which takes longer than reading it.
+ */
+export function stepDuration(step: Step, voiced = false): number {
+  if (voiced && step.kind === "speech" && step.text !== "") {
+    return Math.min(1200 + step.text.length * 240, 30000);
+  }
   switch (step.kind) {
     case "mission_started":
       return 1600;
@@ -198,8 +204,9 @@ export function sceneAt(game: Game, steps: readonly Step[], shown: number): Game
       ...player,
       is_leader: player.id === leader,
       thinking: false,
-      role: player.is_you ? player.role : null,
-      alignment: player.is_you ? player.alignment : null,
+      // A spectator knew every role all along; a player only their own.
+      role: player.is_you || game.spectator ? player.role : null,
+      alignment: player.is_you || game.spectator ? player.alignment : null,
     })),
     missions,
     current_mission_number: current,
@@ -239,13 +246,13 @@ export interface Playback {
  * middle (a page reload) starts caught up: only what arrives afterwards is
  * replayed.
  */
-export function usePlayback(game: Game): Playback {
+export function usePlayback(game: Game, voiced = false): Playback {
   const steps = useMemo(() => buildSteps(game), [game]);
   const [cursor, setCursor] = useState(steps.length);
   const shown = Math.min(cursor, steps.length);
   const playing = shown < steps.length;
   // A number, so a poll that brings the same steps again does not restart the timer.
-  const duration = shown > 0 && playing ? stepDuration(steps[shown - 1]) : 0;
+  const duration = shown > 0 && playing ? stepDuration(steps[shown - 1], voiced) : 0;
   const caughtUp = useRef(true);
 
   useEffect(() => {

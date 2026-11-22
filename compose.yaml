@@ -24,9 +24,10 @@ services:
     build: ./apps/api
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      # AI seats and the AI game master stay off unless LLM_PROVIDER=anthropic.
+      # Each key turns one model on. Claude Code is not available inside the container.
       LLM_PROVIDER: ${LLM_PROVIDER:-none}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       LOG_FORMAT: ${LOG_FORMAT:-json}
     depends_on:
       postgres:

@@ -4,6 +4,7 @@ import type { CSSProperties } from "react";
 import type { ActionRequest, Game, LegalAction, Mission, Phase, Player } from "../../api/client";
 import {
   ALIGNMENT_NAMES,
+  DRIVER_BADGES,
   FALLBACK_REASONS,
   PHASE_NAMES,
   ROLE_HINTS,
@@ -13,6 +14,7 @@ import {
 } from "./labels";
 import { usePlayback } from "./playback";
 import type { Playback, Step } from "./playback";
+import { useReadAloud, useReadAloudSetting } from "./speech";
 
 const SPEECH_LIMIT = 200;
 const MAX_SUSPECTS = 3;
@@ -30,23 +32,54 @@ interface GamePageProps {
 export function GamePage(props: GamePageProps) {
   const { error, onLeave } = props;
   // What is drawn is the table at the step being replayed, not always the latest position.
-  const playback = usePlayback(props.game);
+  // Whether lines are read aloud decides how long each one stays, so it is known first.
+  const readAloud = useReadAloudSetting();
+  const playback = usePlayback(props.game, readAloud.enabled);
   const game = playback.scene;
   const names = new Map(game.players.map((player) => [player.id, player.name]));
   const nameOf = (id: string) => names.get(id) ?? id;
   const me = game.players.find((player) => player.is_you);
+  const line = playback.beat === null ? null : describeStep(playback.beat, game, nameOf);
+  const speaker =
+    playback.beat?.kind === "speech"
+      ? game.players.find((player) => player.id === (playback.beat as { player: string }).player)
+      : undefined;
+  useReadAloud(
+    readAloud.enabled,
+    playback.beatIndex,
+    line === null ? null : playback.beat?.kind === "speech" ? line.body : line.title,
+    speaker?.persona ?? null,
+  );
+  // Thoughts are only sent to those who may read them; show the ones up to this step.
+  const upTo = playback.playing ? (playback.beat?.version ?? 0) : Infinity;
+  const thoughts = game.thoughts.filter((thought) => thought.version <= upTo);
 
   return (
     <main className="page page--table">
       <header className="page__header page__header--row">
         <div>
-          <p className="eyebrow">房间 {game.room_code}</p>
+          <p className="eyebrow">
+            房间 {game.room_code}
+            {game.spectator && " · 观战中，所有身份对你可见"}
+          </p>
           <h1>{PHASE_NAMES[game.phase]}</h1>
           <PhaseTrack phase={game.phase} />
         </div>
-        <button type="button" className="button button--ghost" onClick={onLeave}>
-          离开对局
-        </button>
+        <div className="page__tools">
+          {readAloud.available && (
+            <button
+              type="button"
+              className="button button--ghost"
+              aria-pressed={readAloud.enabled}
+              onClick={readAloud.toggle}
+            >
+              朗读：{readAloud.enabled ? "开" : "关"}
+            </button>
+          )}
+          <button type="button" className="button button--ghost" onClick={onLeave}>
+            离开对局
+          </button>
+        </div>
       </header>
 
       <RoundTable game={game} nameOf={nameOf} playback={playback} />
@@ -82,6 +115,14 @@ export function GamePage(props: GamePageProps) {
       </div>
 
       {game.speeches.length > 0 && <SpeechLog game={game} nameOf={nameOf} />}
+
+      {thoughts.length > 0 && (
+        <Thoughts
+          thoughts={thoughts}
+          nameOf={nameOf}
+          finished={game.phase === "finished"}
+        />
+      )}
 
       {game.announcements.length > 0 && <Announcements game={game} />}
 
@@ -138,6 +179,13 @@ function RoundTable({
   const count = game.players.length;
   const mySeat = game.players.find((player) => player.is_you)?.seat ?? 0;
   const speeches = new Map(game.speeches.map((speech) => [speech.player_id, speech]));
+  const beat = playback.beat;
+  // The ballots, drawn as lines from each seat to the middle while they are read out.
+  const ballots = beat?.kind === "team_vote" ? beat : null;
+  const seatOf = (id: string) => {
+    const seat = game.players.find((player) => player.id === id)?.seat ?? 0;
+    return seatPosition((seat - mySeat + count) % count, count);
+  };
 
   return (
     <div className="table">
@@ -162,6 +210,26 @@ function RoundTable({
         )}
         <Stage game={game} nameOf={nameOf} playback={playback} />
       </section>
+
+      {ballots !== null && (
+        <svg className="table__ballots" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          {[...ballots.approvals, ...ballots.rejections].map((id) => {
+            const from = seatOf(id);
+            return (
+              <line
+                key={id}
+                className={ballots.approvals.includes(id) ? "ballot ballot--yes" : "ballot ballot--no"}
+                x1={from.left}
+                y1={from.top}
+                x2={50}
+                y2={50}
+                pathLength={1}
+                vectorEffect="non-scaling-stroke"
+              />
+            );
+          })}
+        </svg>
+      )}
 
       <ul className="table__seats" aria-label="座位">
         {game.players.map((player) => {
@@ -296,7 +364,15 @@ function Stage({
   nameOf: (id: string) => string;
   playback: Playback;
 }) {
-  const line = playback.beat === null ? null : describeStep(playback.beat, game, nameOf);
+  const beat = playback.beat;
+  const line = beat === null ? null : describeStep(beat, game, nameOf);
+  // Only there for a spectator, or once the game is over.
+  const inner =
+    beat?.kind === "speech"
+      ? game.thoughts.find(
+          (thought) => thought.version === beat.version && thought.player_id === beat.player,
+        )
+      : undefined;
 
   return (
     <div className="stage" aria-live="polite">
@@ -305,6 +381,7 @@ function Stage({
         <p key={playback.beatIndex} className={`stage__line stage__line--${line.tone}`}>
           <strong>{line.title}</strong>
           <span>{line.body}</span>
+          {inner !== undefined && <em className="stage__inner">心声：{inner.text}</em>}
         </p>
       )}
     </div>
@@ -368,7 +445,11 @@ function SeatCard({
   ];
 
   return (
-    <li className={classes.filter(Boolean).join(" ")} style={style}>
+    <li
+      className={classes.filter(Boolean).join(" ")}
+      style={{ ...style, borderTopColor: player.persona?.color }}
+      title={player.persona !== null ? `${player.persona.title}：${player.persona.manner}` : undefined}
+    >
       {speech !== undefined && (
         // The full text is in the speech list below; this is the picture of it.
         <p className="seat__speech" aria-hidden="true" title={speech}>
@@ -379,7 +460,11 @@ function SeatCard({
       <span className="seat__badges">
         {player.is_you && <span className="badge badge--you">你</span>}
         {player.agent === "random" && <span className="badge">机器人</span>}
-        {player.agent === "llm" && <span className="badge badge--ai">AI</span>}
+        {player.agent === "llm" && (
+          <span className="badge badge--ai">
+            {player.driver !== null ? DRIVER_BADGES[player.driver] : "AI"}
+          </span>
+        )}
         {player.is_leader && playing && <span className="badge badge--leader">队长</span>}
         {speaking && <span className="badge badge--speaking">发言中</span>}
         {player.thinking && <span className="badge badge--thinking">思考中…</span>}
@@ -440,6 +525,41 @@ function SpeechLog({ game, nameOf }: { game: Game; nameOf: (id: string) => strin
   );
 }
 
+/** What each AI seat really thought: live for a spectator, a review once the game is over. */
+function Thoughts({
+  thoughts,
+  nameOf,
+  finished,
+}: {
+  thoughts: Game["thoughts"];
+  nameOf: (id: string) => string;
+  finished: boolean;
+}) {
+  // Watching: the latest on top. Reviewing: the whole game in order.
+  const shown = finished ? thoughts : thoughts.slice(-THOUGHTS_SHOWN).reverse();
+
+  return (
+    <section className="card" aria-labelledby="thoughts-title">
+      <h2 id="thoughts-title">{finished ? "复盘：每个 AI 当时的真实想法" : "心声"}</h2>
+      <p className="muted">
+        {finished
+          ? "对局结束后公开。发言是说给桌上听的，这里是它们没说出口的。"
+          : "只有观战的人看得到，桌上的玩家互相看不到。"}
+      </p>
+      <ol className={`thoughts${finished ? " thoughts--all" : ""}`}>
+        {shown.map((thought) => (
+          <li key={`${thought.version}:${thought.player_id}`} className="thought">
+            <span className="thought__who">{nameOf(thought.player_id)}</span>
+            <span className="thought__text">{thought.text}</span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+const THOUGHTS_SHOWN = 8;
+
 // --- What you can do ---------------------------------------------------------
 
 type ActionPanelProps = GamePageProps & { nameOf: (id: string) => string; playback: Playback };
@@ -472,6 +592,13 @@ function ActionPanel(props: ActionPanelProps) {
   }
   if (legal === undefined) {
     const thinking = game.players.filter((player) => player.thinking);
+    if (game.spectator && thinking.length === 0) {
+      return (
+        <p className="muted" role="status">
+          你在观战：能看到每个人的身份和心声，不参与发言和投票。
+        </p>
+      );
+    }
     return (
       <p className="muted" role="status">
         {thinking.length > 0
@@ -485,7 +612,10 @@ function ActionPanel(props: ActionPanelProps) {
     case "start_game":
       return (
         <div className="actions">
-          <p>所有席位已就座。开始后会随机发身份并选出第一任队长。</p>
+          <p>
+            所有席位已就座。开始后会随机发身份并选出第一任队长。
+            {game.spectator && "这一桌全是 AI，你来观战。"}
+          </p>
           <button
             type="button"
             className="button button--primary"
@@ -578,8 +708,8 @@ function ProposeTeam({
   return (
     <div className="actions">
       <p>
-        你是队长。为任务 {game.current_mission_number} 选出 <strong>{size}</strong> 人（已选{" "}
-        {selectedTeam.length}/{size}）。提交后由你第一个发言。
+        你是队长。为任务 {game.current_mission_number} 选出 <strong>{size}</strong> 人上车（已选{" "}
+        {selectedTeam.length}/{size}），可以选你自己。提交后由你第一个发言。
       </p>
       <div className="choices" role="group" aria-label="选择任务成员">
         {legal.targets.map((id) => {
@@ -594,6 +724,7 @@ function ProposeTeam({
               onClick={() => onToggleTeam(id)}
             >
               {nameOf(id)}
+              {id === game.you_id && "（你）"}
             </button>
           );
         })}

@@ -1,11 +1,11 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 
 import { ApiError, createRoom, getConfig, getGame, submitAction } from "./api/client";
-import type { ActionRequest, RoomOptions } from "./api/client";
+import type { ActionRequest, RoomOptions, ServerConfig } from "./api/client";
 import { GamePage } from "./features/game/GamePage";
 import { gameReducer, initialState } from "./features/game/gameReducer";
 import { describeError } from "./features/game/labels";
-import { LobbyPage } from "./features/lobby/LobbyPage";
+import { LobbyPage, NO_MODELS } from "./features/lobby/LobbyPage";
 import { clearSession, loadSession, saveSession } from "./session";
 import "./styles.css";
 
@@ -17,14 +17,15 @@ export default function App() {
   const [state, dispatch] = useReducer(gameReducer, undefined, () => initialState(loadSession()));
   // Guards against a second click landing before the first re-render.
   const busy = useRef(false);
-  const [llmAvailable, setLlmAvailable] = useState(false);
+  const [config, setConfig] = useState<ServerConfig>(NO_MODELS);
 
   useEffect(() => {
     let cancelled = false;
     getConfig()
-      .then((config) => {
+      .then((loaded) => {
         if (!cancelled) {
-          setLlmAvailable(config.llm_available);
+          // An older server answers with less; keep what always works for the rest.
+          setConfig({ ...NO_MODELS, ...loaded });
         }
       })
       .catch(() => {
@@ -154,7 +155,7 @@ export default function App() {
         <LobbyPage
           creating={state.creating}
           error={state.error}
-          llmAvailable={llmAvailable}
+          config={config}
           onCreate={handleCreate}
         />
       );

@@ -479,7 +479,7 @@ def create(client: TestClient, **body: Any) -> Any:
 
 def test_server_without_a_model_says_so_and_refuses_ai_rooms() -> None:
     with api(service_with(None)) as client:
-        assert client.get("/config").json() == {"llm_available": False}
+        assert client.get("/config").json()["llm_available"] is False
 
         for body in ({"ai_seats": 1}, {"gm": "ai"}):
             response = create(client, **body)
@@ -507,7 +507,7 @@ def test_invalid_room_options_are_422(body: dict[str, Any]) -> None:
 
 def test_room_with_ai_seats_over_http() -> None:
     with api(service_with(LegalModel())) as client:
-        assert client.get("/config").json() == {"llm_available": True}
+        assert client.get("/config").json()["llm_available"] is True
 
         response = create(client, ai_seats=2, ai_style="cautious", gm="ai", language="en")
         assert response.status_code == 201

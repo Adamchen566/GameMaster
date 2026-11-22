@@ -10,6 +10,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StrictBool, StringConstraints
 
+from app.agents.personas import persona_for
 from app.agents.state import AgentState
 from app.game.actions import (
     Action,
@@ -34,6 +35,10 @@ class CreateRoomRequest(BaseModel):
     ai_style: Literal["baseline", "cautious", "aggressive"] = "baseline"
     gm: Literal["off", "template", "ai"] = "template"
     language: Literal["zh", "en"] = "zh"
+    seats: list[Literal["bot", "claude", "deepseek", "claude_code"]] | None = None
+    """Who plays each bot seat, in seat order. Replaces `ai_seats` when given."""
+    spectate: bool = False
+    """Nobody sits down: every seat is a bot and you watch, seeing every role."""
 
 
 class _ActionRequest(BaseModel):
@@ -113,6 +118,20 @@ ActionRequest = Annotated[
 ]
 
 
+class PersonaOut(BaseModel):
+    title: str
+    manner: str
+    color: str
+    pitch: float
+    rate: float
+
+
+class ThoughtOut(BaseModel):
+    version: int
+    player_id: str
+    text: str
+
+
 class PlayerOut(BaseModel):
     id: str
     seat: int
@@ -120,6 +139,9 @@ class PlayerOut(BaseModel):
     is_bot: bool
     agent: str | None
     """ "random" or "llm" for a bot seat. """
+    driver: str | None
+    """Which model plays an "llm" seat; None is the server's default."""
+    persona: PersonaOut | None
     thinking: bool
     """The game is waiting for this AI seat."""
     last_turn: str | None
@@ -186,6 +208,10 @@ class GameOut(BaseModel):
     gm: str
     announcements: list[AnnouncementOut]
     log: list[dict[str, object]]
+    spectator: bool
+    """You watch from outside the table: every role is shown and you have no seat."""
+    thoughts: list[ThoughtOut]
+    """What the AI seats really thought. Empty for a player until the game is over."""
     """The public record of the game, oldest first: proposals, speeches, vote and mission results."""
     ai_usage: AiUsageOut
     version: int
@@ -234,6 +260,11 @@ class GameOut(BaseModel):
                 for item in snapshot.announcements
             ],
             log=[entry.to_json() for entry in snapshot.log],
+            spectator=snapshot.spectator,
+            thoughts=[
+                ThoughtOut(version=item.version, player_id=item.player_id, text=item.text)
+                for item in snapshot.thoughts
+            ],
             ai_usage=AiUsageOut(
                 calls=snapshot.usage.calls,
                 input_tokens=snapshot.usage.input_tokens,
@@ -251,6 +282,8 @@ class GameOut(BaseModel):
                     name=seats[player.id].name,
                     is_bot=seats[player.id].is_bot,
                     agent=_agent(seats[player.id]),
+                    driver=seats[player.id].driver,
+                    persona=_persona(seats[player.id]),
                     thinking=player.id in snapshot.thinking,
                     # The agent's private note is deliberately not part of the response.
                     last_turn=_state(snapshot, player.id).last_source,
@@ -321,13 +354,47 @@ def _agent(seat: Seat) -> str | None:
     return (seat.agent or "random") if seat.is_bot else None
 
 
+def _persona(seat: Seat) -> PersonaOut | None:
+    persona = persona_for(seat.name) if seat.is_bot else None
+    if persona is None:
+        return None
+    return PersonaOut(
+        title=persona.title,
+        manner=persona.manner,
+        color=persona.color,
+        pitch=persona.pitch,
+        rate=persona.rate,
+    )
+
+
 def _state(snapshot: Snapshot, player_id: str) -> AgentState:
     return snapshot.agents.get(player_id, AgentState())
 
 
+class DriverOut(BaseModel):
+    id: str
+    label: str
+    available: bool
+    problem: str | None
+    """Why it cannot be used right now: a short code, e.g. "missing_deepseek_api_key"."""
+
+
+class SeatPersonaOut(BaseModel):
+    name: str
+    title: str
+    manner: str
+    color: str
+
+
 class ConfigOut(BaseModel):
     llm_available: bool
-    """Whether this server can run model-driven seats and the AI game master."""
+    """Whether this server can run model-driven seats at all."""
+    gm_ai_available: bool
+    """Whether the game master can be voiced by a model."""
+    drivers: list[DriverOut]
+    """Every way of reaching a model, in the order the lobby shows them."""
+    personas: list[SeatPersonaOut]
+    """Who sits in the bot seats, in seat order."""
 
 
 class RoomCreatedOut(BaseModel):

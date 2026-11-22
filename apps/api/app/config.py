@@ -5,10 +5,13 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    # A local, git-ignored `.env` next to the app is the easiest place for keys.
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
     database_url: str | None = None
     """SQLAlchemy URL, e.g. `postgresql+psycopg://user:password@host:5432/avalon`.
 
@@ -20,6 +23,20 @@ class Settings(BaseSettings):
 
     Credentials are read by the SDK itself (ANTHROPIC_API_KEY). Every AI turn is a paid call.
     """
+    llm_drivers: str = "auto"
+    """Which ways of reaching a model to offer: "auto" (whatever is set up), "none",
+    or a comma list of `claude`, `deepseek`, `claude_code`."""
+    anthropic_api_key: str | None = None
+    """Enables Claude seats. Every turn is a paid call."""
+    deepseek_api_key: str | None = None
+    """Enables DeepSeek seats. Every turn is a paid call."""
+    deepseek_model: str = "deepseek-flash"
+    deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_timeout_seconds: float = 30.0
+    claude_code_model: str = "sonnet"
+    """Model alias passed to the local Claude Code client."""
+    claude_code_timeout_seconds: float = 120.0
+    """One run of the local client takes many seconds."""
     llm_model: str = "claude-opus-5-5"
     llm_effort: Literal["low", "medium", "high", "xhigh", "max"] = "low"
     llm_max_tokens_per_game: int = 300_000

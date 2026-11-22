@@ -25,6 +25,11 @@ class Seat:
     """Who plays a bot seat: "random" (legal random moves) or "llm" (a model). None for humans."""
     style: str | None = None
     """Playing style of an "llm" seat."""
+    driver: str | None = None
+    """Which model plays an "llm" seat: "claude", "deepseek" or "claude_code".
+
+    None means the server's default model (seats created before drivers existed).
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +43,12 @@ class Room:
     """Game master: "off", "template" (fixed sentences) or "ai" (a model adds colour)."""
     language: str = "zh"
     """Language of the game master's announcements: "zh" or "en"."""
+    spectator: Seat | None = None
+    """Someone watching from outside the table: no seat in the game, but a token."""
+
+
+SPECTATOR_ID = "spectator"
+"""Player id of the watcher. Never a seat in the game."""
 
 
 def new_token() -> tuple[str, str]:
@@ -77,7 +88,8 @@ class InMemoryRoomStore:
 
     def add(self, room: Room) -> None:
         self._by_game_id[room.game_id] = room
-        for seat in room.seats:
+        watchers = (room.spectator,) if room.spectator is not None else ()
+        for seat in (*room.seats, *watchers):
             if seat.token_hash is not None:
                 self._by_token_hash[seat.token_hash] = (room, seat)
 
