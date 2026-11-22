@@ -293,3 +293,38 @@ def test_spent_budget_means_template_and_no_call() -> None:
 
     assert narration.source == "template"
     assert silent.calls == []
+
+
+# --- Roles are not the narrator's to mention ---------------------------------
+
+
+@pytest.mark.parametrize(
+    "line",
+    ["Player 2 is surely Merlin.", "玩家 3 一定是刺客。", "A MINION smiles in the dark."],
+)
+def test_model_may_not_name_a_role_while_the_game_is_running(line: str) -> None:
+    """It is never told a role, so anything it says about one is a guess or an accusation."""
+    narration = Narrator(ScriptedModel([colour(announcement=line)])).narrate(
+        "g1", PROPOSAL, NAMES, "en"
+    )
+
+    assert narration.source == "template"
+    assert narration.announcement == facts(PROPOSAL, NAMES, "en")
+
+
+def test_not_even_when_the_event_itself_is_about_the_assassin() -> None:
+    hunt = ENTRIES["assassination_started"]
+    model = ScriptedModel([colour(announcement="Player 1 is Merlin, strike now.")])
+
+    narration = Narrator(model).narrate("g1", hunt, NAMES, "en")
+
+    assert narration.source == "template"
+
+
+def test_roles_may_be_named_once_the_game_is_over() -> None:
+    ending = next(entry for key, entry in ENTRIES.items() if key.startswith("game_finished"))
+    model = ScriptedModel([colour(announcement="Merlin's secret is safe no longer.")])
+
+    narration = Narrator(model).narrate("g1", ending, NAMES, "en")
+
+    assert narration.source == "model"

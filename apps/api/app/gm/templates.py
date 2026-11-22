@@ -34,6 +34,35 @@ RULE_HINTS: tuple[RuleHint, ...] = (
     "assassination",
 )
 
+# The narrator is never told a role, so while a game is running anything it says
+# about one is a guess or an accusation. Matching is on lower-cased text.
+ROLE_WORDS: tuple[str, ...] = (
+    "merlin",
+    "percival",
+    "morgana",
+    "mordred",
+    "oberon",
+    "assassin",
+    "minion",
+    "loyal servant",
+    "梅林",
+    "派西维尔",
+    "莫甘娜",
+    "莫德雷德",
+    "奥伯伦",
+    "刺客",
+    "爪牙",
+    "忠臣",
+)
+ROLES_PUBLIC_AFTER = "game_finished"
+"""The one public event after which roles are no longer secret."""
+
+
+def names_a_role(text: str) -> bool:
+    lowered = text.lower()
+    return any(word in lowered for word in ROLE_WORDS)
+
+
 # Rule explanations are fixed text chosen by key, so a model can pick which
 # rule to mention but can never invent one.
 _HINTS: dict[RuleHint, dict[Language, str]] = {

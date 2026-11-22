@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     llm_output_price_per_mtok: float | None = None
     """US dollars per million tokens; set both to see an estimated cost per game."""
 
+    log_format: Literal["json", "text"] = "json"
+    """One JSON object per line, or plain text for reading in a terminal."""
+    log_level: str = "INFO"
+
 
 @lru_cache
 def get_settings() -> Settings:

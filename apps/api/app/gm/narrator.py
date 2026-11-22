@@ -4,7 +4,8 @@ The narrator is handed `PublicEntry` objects, so it has no secret to give away
 however it is prompted. What a model may add is limited to three things:
 
 - `tone`          one of a fixed set
-- `announcement`  a short piece of colour, shown next to the factual sentence
+- `announcement`  a short piece of colour, shown next to the factual sentence;
+                  it may not name a role while the game is running
 - `rule_hint`     the *key* of a rule explanation; the text is ours
 
 The factual sentence always comes from the templates. If the model is slow,
@@ -24,6 +25,7 @@ from app.agents.contract import clean_name
 from app.agents.model import ModelClient, ModelError, TokenBudget
 from app.game.public_log import PublicEntry
 from app.gm.templates import (
+    ROLES_PUBLIC_AFTER,
     RULE_HINTS,
     TONES,
     Language,
@@ -33,6 +35,7 @@ from app.gm.templates import (
     default_tone,
     facts,
     hint_text,
+    names_a_role,
 )
 
 DEFAULT_TIMEOUT_SECONDS = 3.0
@@ -194,6 +197,9 @@ class Narrator:
             return None
         text = " ".join(text.split())
         if not text or len(text) > ANNOUNCEMENT_LIMIT:
+            return None
+        if entry.kind != ROLES_PUBLIC_AFTER and names_a_role(text):
+            # It cannot know a role, so this is a guess or an accusation.
             return None
 
         checked_tone: Tone = tone

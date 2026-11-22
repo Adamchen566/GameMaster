@@ -34,3 +34,6 @@ postgres-data/
 
 # Local SQLite databases
 *.db
+
+# Evaluation output
+eval-out/
