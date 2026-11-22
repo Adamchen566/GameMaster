@@ -4,7 +4,15 @@ from dataclasses import asdict
 
 import pytest
 
-from app.game.actions import Action, Assassinate, ProposeTeam, StartGame, VoteMission, VoteTeam
+from app.game.actions import (
+    Action,
+    Assassinate,
+    ProposeTeam,
+    Speak,
+    StartGame,
+    VoteMission,
+    VoteTeam,
+)
 from app.game.engine import apply_action
 from app.game.errors import ErrorCode, RuleViolation
 from app.game.rulesets import OFFICIAL, Alignment, PlayerCountRules, Role, RuleSet
@@ -252,6 +260,12 @@ def concrete_actions(legal: LegalAction, player_id: str, rng: random.Random) -> 
             assert legal.team_size is not None
             team = tuple(rng.sample(legal.targets, legal.team_size))
             return [ProposeTeam(player_id=player_id, team=team)]
+        case "speak":
+            suspect = rng.choice(legal.targets)
+            return [
+                Speak(player_id=player_id),
+                Speak(player_id=player_id, text="I doubt this team.", suspects=(suspect,)),
+            ]
         case "vote_team":
             return [VoteTeam(player_id=player_id, approve=choice) for choice in (True, False)]
         case "vote_mission":
@@ -268,6 +282,7 @@ def every_kind_of_action(state: GameState, player_id: str) -> list[Action]:
     return [
         StartGame(player_id=player_id, seed=1),
         ProposeTeam(player_id=player_id, team=state.player_ids[:2]),
+        Speak(player_id=player_id),
         VoteTeam(player_id=player_id, approve=True),
         VoteMission(player_id=player_id, success=True),
         Assassinate(player_id=player_id, target_id=other),

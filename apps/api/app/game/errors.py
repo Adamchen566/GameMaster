@@ -27,6 +27,9 @@ class ErrorCode(StrEnum):
     GOOD_MUST_SUCCEED = "good_must_succeed"
     NOT_ASSASSIN = "not_assassin"
     INVALID_TARGET = "invalid_target"
+    NOT_YOUR_TURN_TO_SPEAK = "not_your_turn_to_speak"
+    SPEECH_TOO_LONG = "speech_too_long"
+    INVALID_SUSPECT = "invalid_suspect"
 
 
 class RuleViolation(Exception):

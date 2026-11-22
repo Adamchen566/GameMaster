@@ -6,7 +6,15 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from app.game.actions import Action, Assassinate, ProposeTeam, StartGame, VoteMission, VoteTeam
+from app.game.actions import (
+    Action,
+    Assassinate,
+    ProposeTeam,
+    Speak,
+    StartGame,
+    VoteMission,
+    VoteTeam,
+)
 from app.game.engine import apply_action, evolve, new_game, replay
 from app.game.errors import RuleViolation
 from app.game.rulesets import OFFICIAL
@@ -16,9 +24,9 @@ from app.game.state import GameState, Phase
 from tests.game.invariants import check_invariants
 from tests.game.scenarios import player_ids
 
-# A game has at most 5 missions x 5 proposals x (1 proposal + 10 votes) + 25 mission
-# cards + start + assassination legal actions; junk actions are added on top.
-MAX_STEPS = 400
+# A game has at most 5 missions x 5 proposals x (1 proposal + 10 speeches + 10 votes)
+# + 25 mission cards + start + assassination legal actions; junk is added on top.
+MAX_STEPS = 650
 
 SEEDS = st.integers(min_value=0, max_value=2**32 - 1)
 
@@ -33,6 +41,13 @@ def arbitrary_actions(ids: tuple[str, ...]) -> st.SearchStrategy[Action]:
             ProposeTeam,
             player_id=player,
             team=st.lists(player, max_size=6).map(tuple),
+            expected_version=version,
+        ),
+        st.builds(
+            Speak,
+            player_id=player,
+            text=st.text(max_size=260),
+            suspects=st.lists(player, max_size=4).map(tuple),
             expected_version=version,
         ),
         st.builds(VoteTeam, player_id=player, approve=st.booleans(), expected_version=version),

@@ -21,6 +21,7 @@ from app.game.events import (
     MissionCompleted,
     MissionStarted,
     MissionVoteCast,
+    PlayerSpoke,
     TeamApproved,
     TeamProposed,
     TeamRejected,
@@ -76,6 +77,16 @@ def _team_proposed(p: Payload) -> TeamProposed:
     )
 
 
+def _player_spoke(p: Payload) -> PlayerSpoke:
+    return PlayerSpoke(
+        mission_number=int(p["mission_number"]),
+        proposal_number=int(p["proposal_number"]),
+        player_id=str(p["player_id"]),
+        text=str(p["text"]),
+        suspects=_ids(p["suspects"]),
+    )
+
+
 def _team_vote_cast(p: Payload) -> TeamVoteCast:
     return TeamVoteCast(player_id=str(p["player_id"]), approve=bool(p["approve"]))
 
@@ -127,6 +138,7 @@ _DECODERS: dict[str, Callable[[Payload], GameEvent]] = {
     "game_started": _game_started,
     "mission_started": _mission_started,
     "team_proposed": _team_proposed,
+    "player_spoke": _player_spoke,
     "team_vote_cast": _team_vote_cast,
     "team_approved": _team_approved,
     "team_rejected": _team_rejected,

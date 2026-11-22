@@ -10,6 +10,7 @@ from app.game.simulate import play_random_game
 PUBLIC_KINDS = {
     "mission_started",
     "team_proposed",
+    "speech",
     "team_vote",
     "mission_result",
     "assassination_started",

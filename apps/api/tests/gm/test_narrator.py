@@ -32,7 +32,8 @@ def one_of_each_kind() -> dict[str, PublicEntry]:
                 found.setdefault(f"mission_result:{entry.data['outcome']}", entry)
             elif entry.kind == "game_finished":
                 found.setdefault(f"game_finished:{entry.data['reason']}", entry)
-            else:
+            elif entry.kind != "speech":
+                # What players say is theirs; the game master does not announce it.
                 found.setdefault(entry.kind, entry)
     return found
 
@@ -258,6 +259,8 @@ def test_narrator_has_no_secret_to_leak() -> None:
     for seed in range(5):
         game = play_random_game(player_count=10, seed=seed)
         for entry in public_log(game.events):
+            if entry.kind == "speech":
+                continue
             narrator.narrate(game.initial.game_id + str(seed), entry, NAMES, "en")
 
     assert model.calls

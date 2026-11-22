@@ -33,6 +33,17 @@ class ProposeTeam:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class Speak:
+    """Say something about the proposed team. An empty text is a pass."""
+
+    player_id: str
+    text: str = ""
+    suspects: tuple[str, ...] = ()
+    expected_version: int | None = None
+    type: Literal["speak"] = "speak"
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class VoteTeam:
     player_id: str
     approve: bool
@@ -56,4 +67,4 @@ class Assassinate:
     type: Literal["assassinate"] = "assassinate"
 
 
-Action = StartGame | ProposeTeam | VoteTeam | VoteMission | Assassinate
+Action = StartGame | ProposeTeam | Speak | VoteTeam | VoteMission | Assassinate

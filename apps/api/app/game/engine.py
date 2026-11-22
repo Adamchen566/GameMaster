@@ -25,6 +25,7 @@ from app.game.actions import (
     Action,
     Assassinate,
     ProposeTeam,
+    Speak,
     StartGame,
     VoteMission,
     VoteTeam,
@@ -39,6 +40,7 @@ from app.game.events import (
     MissionCompleted,
     MissionStarted,
     MissionVoteCast,
+    PlayerSpoke,
     TeamApproved,
     TeamProposed,
     TeamRejected,
@@ -52,10 +54,21 @@ from app.game.state import (
     MissionVote,
     Phase,
     PlayerState,
+    Speech,
     TeamVote,
     TeamVoteRecord,
     WinReason,
 )
+
+SPEECH_LIMIT = 200
+"""Characters in one speech, after whitespace is collapsed."""
+MAX_SUSPECTS = 3
+
+
+def clean_speech(text: str) -> str:
+    """One line of printable text. What people type is shown to everyone at the table."""
+    single_line = " ".join(text.split())
+    return "".join(character for character in single_line if character.isprintable())
 
 
 def new_game(
@@ -184,6 +197,40 @@ def _propose_team(transition: _Transition, actor: PlayerState, action: ProposeTe
     )
 
 
+def _speak(transition: _Transition, actor: PlayerState, action: Speak) -> None:
+    state = transition.state
+    _require_phase(state, Phase.DISCUSSION)
+    if actor.id != state.next_speaker_id:
+        raise RuleViolation(ErrorCode.NOT_YOUR_TURN_TO_SPEAK, "It is not your turn to speak yet.")
+
+    text = clean_speech(action.text)
+    if len(text) > SPEECH_LIMIT:
+        raise RuleViolation(
+            ErrorCode.SPEECH_TOO_LONG, f"A speech is at most {SPEECH_LIMIT} characters."
+        )
+    suspects = set(action.suspects)
+    allowed = set(state.player_ids) - {actor.id}
+    if (
+        len(suspects) != len(action.suspects)
+        or len(suspects) > MAX_SUSPECTS
+        or not suspects <= allowed
+    ):
+        raise RuleViolation(
+            ErrorCode.INVALID_SUSPECT,
+            f"Name at most {MAX_SUSPECTS} other players, each once.",
+        )
+
+    transition.emit(
+        PlayerSpoke(
+            mission_number=state.current_mission.number,
+            proposal_number=state.proposal_number,
+            player_id=actor.id,
+            text=text,
+            suspects=_in_seat_order(state, suspects),
+        )
+    )
+
+
 def _vote_team(transition: _Transition, actor: PlayerState, action: VoteTeam) -> None:
     state = transition.state
     _require_phase(state, Phase.TEAM_VOTE)
@@ -287,6 +334,7 @@ _HANDLERS: dict[type, Callable[[_Transition, PlayerState, Any], None]] = {
     StartGame: _start_game,
     ProposeTeam: _propose_team,
     VoteTeam: _vote_team,
+    Speak: _speak,
     VoteMission: _vote_mission,
     Assassinate: _assassinate,
 }
@@ -347,7 +395,17 @@ def _apply_event(state: GameState, event: GameEvent) -> GameState:
                 rejected_proposals=0,
             )
         case TeamProposed():
-            return replace(state, phase=Phase.TEAM_VOTE, proposed_team=event.team)
+            return replace(state, phase=Phase.DISCUSSION, proposed_team=event.team, speeches=())
+        case PlayerSpoke():
+            speech = Speech(player_id=event.player_id, text=event.text, suspects=event.suspects)
+            speeches = (*state.speeches, speech)
+            # Once everyone has spoken the table votes.
+            everyone = len(speeches) == len(state.players)
+            return replace(
+                state,
+                speeches=speeches,
+                phase=Phase.TEAM_VOTE if everyone else Phase.DISCUSSION,
+            )
         case TeamVoteCast():
             team_vote = TeamVote(player_id=event.player_id, approve=event.approve)
             return replace(state, team_votes=(*state.team_votes, team_vote))

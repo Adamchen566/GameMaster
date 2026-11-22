@@ -56,6 +56,8 @@ def decision(**overrides: Any) -> dict[str, Any]:
         "approve": True,
         "success": True,
         "target_id": "",
+        "speech": "",
+        "suspects": [],
         "note": "",
         **overrides,
     }

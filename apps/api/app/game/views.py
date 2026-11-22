@@ -17,6 +17,7 @@ from app.game.state import (
     MissionOutcome,
     Phase,
     PlayerState,
+    Speech,
     TeamVoteRecord,
     WinReason,
 )
@@ -77,6 +78,10 @@ class PlayerView:
     max_rejected_proposals: int
     missions_to_win: int
     proposed_team: tuple[str, ...]
+    speeches: tuple[Speech, ...]
+    """What has been said about the latest proposal, in speaking order."""
+    speaker_id: str | None
+    """Whose turn it is to speak, during the discussion."""
     team_voted: tuple[str, ...]
     """Who has voted on the open proposal. The votes stay hidden until all are in."""
     your_team_vote: bool | None
@@ -91,7 +96,7 @@ class PlayerView:
     legal_actions: tuple[LegalAction, ...]
 
 
-_PLAY_PHASES = (Phase.TEAM_PROPOSAL, Phase.TEAM_VOTE, Phase.MISSION_VOTE)
+_PLAY_PHASES = (Phase.TEAM_PROPOSAL, Phase.DISCUSSION, Phase.TEAM_VOTE, Phase.MISSION_VOTE)
 
 
 def build_player_view(state: GameState, player_id: str) -> PlayerView:
@@ -125,6 +130,8 @@ def build_player_view(state: GameState, player_id: str) -> PlayerView:
         max_rejected_proposals=state.ruleset.max_rejected_proposals,
         missions_to_win=state.ruleset.missions_to_win,
         proposed_team=state.proposed_team,
+        speeches=state.speeches,
+        speaker_id=state.next_speaker_id,
         team_voted=tuple(vote.player_id for vote in state.team_votes),
         your_team_vote=next(
             (vote.approve for vote in state.team_votes if vote.player_id == viewer.id), None
@@ -161,6 +168,10 @@ def legal_actions(state: GameState, player_id: str) -> tuple[LegalAction, ...]:
                         targets=state.player_ids,
                     ),
                 )
+        case Phase.DISCUSSION:
+            if player.id == state.next_speaker_id:
+                others = tuple(pid for pid in state.player_ids if pid != player.id)
+                return (LegalAction(type="speak", targets=others),)
         case Phase.TEAM_VOTE:
             if all(vote.player_id != player.id for vote in state.team_votes):
                 return (LegalAction(type="vote_team"),)

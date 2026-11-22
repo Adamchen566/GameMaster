@@ -20,6 +20,7 @@ from app.game.events import (
     GameFinished,
     MissionCompleted,
     MissionStarted,
+    PlayerSpoke,
     TeamApproved,
     TeamProposed,
     TeamRejected,
@@ -50,6 +51,15 @@ def _entry(version: int, event: GameEvent) -> PublicEntry | None:
                 "proposal": event.proposal_number,
                 "leader": event.leader_id,
                 "team": list(event.team),
+            }
+        case PlayerSpoke():
+            kind = "speech"
+            data = {
+                "mission": event.mission_number,
+                "proposal": event.proposal_number,
+                "player": event.player_id,
+                "text": event.text,
+                "suspects": list(event.suspects),
             }
         case TeamApproved() | TeamRejected():
             kind = "team_vote"

@@ -31,7 +31,7 @@ from app.gm.templates import LANGUAGES, Language
 
 PLAYER_COUNTS = (5, 6, 7, 8, 9, 10)
 ROLES = (Role.MERLIN, Role.LOYAL_SERVANT, Role.ASSASSIN, Role.MINION)
-PHASES = (Phase.TEAM_PROPOSAL, Phase.TEAM_VOTE, Phase.MISSION_VOTE)
+PHASES = (Phase.TEAM_PROPOSAL, Phase.DISCUSSION, Phase.TEAM_VOTE, Phase.MISSION_VOTE)
 SEARCH_LIMIT = 20_000
 
 Predicate = Callable[[PlayerView], bool]

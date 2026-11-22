@@ -123,7 +123,7 @@ def test_action_made_for_the_current_version_is_accepted() -> None:
         player_id=leader_id(state), team=default_team(state), expected_version=state.version
     )
 
-    assert act(state, current).phase is Phase.TEAM_VOTE
+    assert act(state, current).phase is Phase.DISCUSSION
 
 
 @pytest.mark.parametrize("player_count", range(5, 11))
