@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { CSSProperties } from "react";
 
 import type { ActionRequest, Game, LegalAction, Mission, Player } from "../../api/client";
 import {
@@ -10,6 +11,9 @@ import {
   SEEN_AS_NAMES,
   WIN_REASONS,
 } from "./labels";
+
+const SPEECH_LIMIT = 200;
+const MAX_SUSPECTS = 3;
 
 interface GamePageProps {
   game: Game;
@@ -28,7 +32,7 @@ export function GamePage(props: GamePageProps) {
   const me = game.players.find((player) => player.is_you);
 
   return (
-    <main className="page">
+    <main className="page page--table">
       <header className="page__header page__header--row">
         <div>
           <p className="eyebrow">房间 {game.room_code}</p>
@@ -41,43 +45,38 @@ export function GamePage(props: GamePageProps) {
 
       {game.phase === "finished" && <Result game={game} />}
 
-      <section className="card" aria-labelledby="action-title">
-        <h2 id="action-title">你的操作</h2>
-        <ActionPanel {...props} nameOf={nameOf} />
-        {error !== null && (
-          <p className="alert alert--danger" role="alert">
-            {error}
-          </p>
-        )}
-      </section>
+      <RoundTable game={game} nameOf={nameOf} />
 
-      {me?.role != null && game.phase !== "finished" && (
-        <section className="card card--secret" aria-labelledby="role-title">
-          <h2 id="role-title">你的身份</h2>
-          <p className="role">
-            <strong>{ROLE_NAMES[me.role]}</strong>
-            {me.alignment !== null && (
-              <span className={`badge badge--${me.alignment}`}>
-                {ALIGNMENT_NAMES[me.alignment]}
-              </span>
-            )}
-          </p>
-          <p className="muted">{ROLE_HINTS[me.role]}</p>
+      <div className="below-table">
+        <section className="card" aria-labelledby="action-title">
+          <h2 id="action-title">你的操作</h2>
+          <ActionPanel {...props} nameOf={nameOf} />
+          {error !== null && (
+            <p className="alert alert--danger" role="alert">
+              {error}
+            </p>
+          )}
         </section>
-      )}
+
+        {me?.role != null && game.phase !== "finished" && (
+          <section className="card card--secret" aria-labelledby="role-title">
+            <h2 id="role-title">你的身份</h2>
+            <p className="role">
+              <strong>{ROLE_NAMES[me.role]}</strong>
+              {me.alignment !== null && (
+                <span className={`badge badge--${me.alignment}`}>
+                  {ALIGNMENT_NAMES[me.alignment]}
+                </span>
+              )}
+            </p>
+            <p className="muted">{ROLE_HINTS[me.role]}</p>
+          </section>
+        )}
+      </div>
+
+      {game.speeches.length > 0 && <SpeechLog game={game} nameOf={nameOf} />}
 
       {game.announcements.length > 0 && <Announcements game={game} />}
-
-      {game.missions.length > 0 && <MissionTrack game={game} />}
-
-      <section className="card" aria-labelledby="players-title">
-        <h2 id="players-title">玩家</h2>
-        <ul className="players">
-          {game.players.map((player) => (
-            <PlayerRow key={player.id} player={player} game={game} />
-          ))}
-        </ul>
-      </section>
 
       {game.last_team_vote !== null && (
         <section className="card" aria-labelledby="vote-title">
@@ -107,6 +106,191 @@ function Result({ game }: { game: Game }) {
     </section>
   );
 }
+
+// --- The table ---------------------------------------------------------------
+
+/**
+ * Where a seat sits on the oval, in percent of the table's box. Your own seat
+ * is at the bottom; the others follow clockwise in seat order, which is also
+ * the order in which the leader token and the right to speak travel.
+ */
+export function seatPosition(offset: number, count: number): { left: number; top: number } {
+  const angle = Math.PI / 2 + (2 * Math.PI * offset) / count;
+  return { left: 50 + 43 * Math.cos(angle), top: 50 + 41 * Math.sin(angle) };
+}
+
+function RoundTable({ game, nameOf }: { game: Game; nameOf: (id: string) => string }) {
+  const count = game.players.length;
+  const mySeat = game.players.find((player) => player.is_you)?.seat ?? 0;
+  const speeches = new Map(game.speeches.map((speech) => [speech.player_id, speech]));
+
+  return (
+    <div className="table">
+      <section className="table__centre" aria-labelledby="missions-title">
+        <h2 id="missions-title">任务</h2>
+        <ol className="missions">
+          {game.missions.map((mission) => (
+            <MissionCard key={mission.number} mission={mission} game={game} />
+          ))}
+        </ol>
+        {game.missions.length === 0 && <p className="muted">开始后，五张任务卡会摆在这里。</p>}
+        {game.proposal_number !== null && (
+          <p className="table__track">
+            本任务已否决 {game.proposal_number - 1}/{game.max_rejected_proposals} 次组队；满{" "}
+            {game.max_rejected_proposals} 次邪恶方直接获胜。
+          </p>
+        )}
+        {game.proposed_team.length > 0 && (
+          <p className="table__proposal">
+            提名队伍：<strong>{game.proposed_team.map(nameOf).join("、")}</strong>
+          </p>
+        )}
+      </section>
+
+      <ul className="table__seats" aria-label="座位">
+        {game.players.map((player) => {
+          const position = seatPosition((player.seat - mySeat + count) % count, count);
+          const style: CSSProperties = { left: `${position.left}%`, top: `${position.top}%` };
+          return (
+            <SeatCard
+              key={player.id}
+              player={player}
+              game={game}
+              speech={speeches.get(player.id)?.text}
+              style={style}
+            />
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function MissionCard({ mission, game }: { mission: Mission; game: Game }) {
+  const current = mission.number === game.current_mission_number && game.phase !== "finished";
+  const state = mission.outcome === "success" ? "成功" : mission.outcome === "fail" ? "失败" : "未做";
+
+  return (
+    <li
+      className={`mission mission--${mission.outcome ?? "open"}`}
+      aria-current={current ? "step" : undefined}
+    >
+      <span className="mission__number">任务 {mission.number}</span>
+      <span className="mission__state">{state}</span>
+      <span className="mission__detail">{missionDetail(mission, current)}</span>
+    </li>
+  );
+}
+
+function missionDetail(mission: Mission, current: boolean): string {
+  if (mission.outcome !== null) {
+    return `${mission.fail_votes ?? 0} 张失败牌`;
+  }
+  const size = `${mission.team_size} 人`;
+  const needsTwo = mission.fails_required > 1 ? ` · 需 ${mission.fails_required} 张失败` : "";
+  return current ? `进行中 · ${size}${needsTwo}` : `${size}${needsTwo}`;
+}
+
+function SeatCard({
+  player,
+  game,
+  speech,
+  style,
+}: {
+  player: Player;
+  game: Game;
+  speech: string | undefined;
+  style: CSSProperties;
+}) {
+  const playing = game.phase !== "finished";
+  const mission = game.missions.find((m) => m.number === game.current_mission_number);
+  const onProposedTeam = game.proposed_team.includes(player.id);
+  const onMission = game.phase === "mission_vote" && (mission?.team.includes(player.id) ?? false);
+  const speaking = game.speaker_id === player.id;
+  const lastVote = game.last_team_vote;
+  // Only while the table is choosing the next team: afterwards it is old news.
+  const showLastVote = lastVote !== null && game.phase === "team_proposal";
+  const classes = [
+    "seat",
+    player.is_you ? "seat--you" : "",
+    speaking ? "seat--speaking" : "",
+    onProposedTeam || onMission ? "seat--on-team" : "",
+  ];
+
+  return (
+    <li className={classes.filter(Boolean).join(" ")} style={style}>
+      {speech !== undefined && (
+        // The full text is in the speech list below; this is the picture of it.
+        <p className="seat__speech" aria-hidden="true" title={speech}>
+          {speech === "" ? "（过）" : speech}
+        </p>
+      )}
+      <span className="seat__name">{player.name}</span>
+      <span className="seat__badges">
+        {player.is_you && <span className="badge badge--you">你</span>}
+        {player.agent === "random" && <span className="badge">机器人</span>}
+        {player.agent === "llm" && <span className="badge badge--ai">AI</span>}
+        {player.is_leader && playing && <span className="badge badge--leader">队长</span>}
+        {speaking && <span className="badge badge--speaking">发言中</span>}
+        {player.thinking && <span className="badge badge--thinking">思考中…</span>}
+        {player.last_turn === "fallback" && (
+          <span className="badge badge--fallback">
+            上一步由机器人代打
+            {player.fallback_reason !== null && `：${FALLBACK_REASONS[player.fallback_reason]}`}
+          </span>
+        )}
+        {onProposedTeam && <span className="badge badge--team">提名中</span>}
+        {onMission && <span className="badge badge--team">任务中</span>}
+        {game.phase === "team_vote" && game.team_voted.includes(player.id) && (
+          <span className="badge">已投票</span>
+        )}
+        {game.phase === "mission_vote" && game.mission_played.includes(player.id) && (
+          <span className="badge">已出牌</span>
+        )}
+        {showLastVote && lastVote.approvals.includes(player.id) && (
+          <span className="badge badge--good">上轮赞成</span>
+        )}
+        {showLastVote && lastVote.rejections.includes(player.id) && (
+          <span className="badge badge--evil">上轮反对</span>
+        )}
+        {player.seen_as !== null && (
+          <span className="badge badge--known">你知道：{SEEN_AS_NAMES[player.seen_as]}</span>
+        )}
+        {game.assassination_target_id === player.id && (
+          <span className="badge badge--evil">被刺杀</span>
+        )}
+        {player.role !== null && (!player.is_you || !playing) && (
+          <span className={`badge badge--${player.alignment ?? "good"}`}>
+            {ROLE_NAMES[player.role]}
+          </span>
+        )}
+      </span>
+    </li>
+  );
+}
+
+function SpeechLog({ game, nameOf }: { game: Game; nameOf: (id: string) => string }) {
+  return (
+    <section className="card" aria-labelledby="speech-title">
+      <h2 id="speech-title">本轮发言</h2>
+      <ol className="speeches">
+        {game.speeches.map((speech) => (
+          <li key={speech.player_id} className="speech">
+            <span className="speech__who">{nameOf(speech.player_id)}</span>
+            <span className="speech__text">{speech.text === "" ? "（过）" : speech.text}</span>
+            {speech.suspects.length > 0 && (
+              <span className="speech__suspects">
+                点名怀疑：{speech.suspects.map(nameOf).join("、")}
+              </span>
+            )}
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+// --- What you can do ---------------------------------------------------------
 
 type ActionPanelProps = GamePageProps & { nameOf: (id: string) => string };
 
@@ -152,11 +336,15 @@ function ActionPanel(props: ActionPanelProps) {
       );
     case "propose_team":
       return <ProposeTeam {...props} legal={legal} />;
+    case "speak":
+      // Keyed by version so the draft is cleared for the next round of speeches.
+      return <Speak key={game.version} {...props} legal={legal} />;
     case "vote_team":
       return (
         <div className="actions">
           <p>
-            队长提议派出：<strong>{game.proposed_team.map(props.nameOf).join("、")}</strong>
+            大家都说完了。队长提议派出：
+            <strong>{game.proposed_team.map(props.nameOf).join("、")}</strong>
             。你同意吗？
           </p>
           <div className="actions__row">
@@ -229,7 +417,7 @@ function ProposeTeam({
     <div className="actions">
       <p>
         你是队长。为任务 {game.current_mission_number} 选出 <strong>{size}</strong> 人（已选{" "}
-        {selectedTeam.length}/{size}）。
+        {selectedTeam.length}/{size}）。提交后由你第一个发言。
       </p>
       <div className="choices" role="group" aria-label="选择任务成员">
         {legal.targets.map((id) => {
@@ -256,6 +444,85 @@ function ProposeTeam({
       >
         提交队伍
       </button>
+    </div>
+  );
+}
+
+function Speak({
+  game,
+  pending,
+  onAction,
+  nameOf,
+  legal,
+}: ActionPanelProps & { legal: LegalAction }) {
+  const [text, setText] = useState("");
+  const [suspects, setSuspects] = useState<string[]>([]);
+  const isLeader = game.leader_id === game.you_id;
+  const tooLong = text.trim().length > SPEECH_LIMIT;
+
+  function toggle(id: string) {
+    setSuspects((current) =>
+      current.includes(id) ? current.filter((other) => other !== id) : [...current, id],
+    );
+  }
+
+  return (
+    <div className="actions">
+      <p>
+        轮到你发言。
+        {isLeader ? "说说你为什么选这支队伍。" : "说说你对这支队伍的看法，其他人会据此判断。"}
+      </p>
+      <div className="field">
+        <label htmlFor="speech">你的发言</label>
+        <textarea
+          id="speech"
+          rows={3}
+          value={text}
+          aria-invalid={tooLong}
+          aria-describedby="speech-count"
+          placeholder="例如：这队我不放心，上一轮失败时其中一人在队里。"
+          onChange={(event) => setText(event.target.value)}
+        />
+        <p id="speech-count" className={tooLong ? "field__error" : "muted"}>
+          {text.trim().length}/{SPEECH_LIMIT} 字
+        </p>
+      </div>
+      <div className="choices" role="group" aria-label="点名怀疑（最多 3 人）">
+        {legal.targets.map((id) => {
+          const selected = suspects.includes(id);
+          return (
+            <button
+              key={id}
+              type="button"
+              className={`chip${selected ? " chip--selected" : ""}`}
+              aria-pressed={selected}
+              disabled={pending || (!selected && suspects.length >= MAX_SUSPECTS)}
+              onClick={() => toggle(id)}
+            >
+              {nameOf(id)}
+            </button>
+          );
+        })}
+      </div>
+      <p className="muted">点名是公开的：机器人会把被点名当成一条线索。</p>
+      <div className="actions__row">
+        <button
+          type="button"
+          className="button button--primary"
+          disabled={pending || tooLong || (text.trim() === "" && suspects.length === 0)}
+          onClick={() => onAction({ type: "speak", text: text.trim(), suspects })}
+        >
+          发言
+        </button>
+        <button
+          type="button"
+          className="button button--secondary"
+          disabled={pending}
+          onClick={() => onAction({ type: "speak", text: "", suspects: [] })}
+        >
+          过
+        </button>
+      </div>
     </div>
   );
 }
@@ -324,103 +591,5 @@ function Announcements({ game }: { game: Game }) {
         ))}
       </ol>
     </section>
-  );
-}
-
-function MissionTrack({ game }: { game: Game }) {
-  const rejected = (game.proposal_number ?? 1) - 1;
-
-  return (
-    <section className="card" aria-labelledby="missions-title">
-      <h2 id="missions-title">任务</h2>
-      <ol className="missions">
-        {game.missions.map((mission) => (
-          <li
-            key={mission.number}
-            className={`mission mission--${mission.outcome ?? "open"}`}
-            aria-current={
-              mission.number === game.current_mission_number && game.phase !== "finished"
-                ? "step"
-                : undefined
-            }
-          >
-            <span className="mission__number">任务 {mission.number}</span>
-            <span className="mission__size">{mission.team_size} 人</span>
-            <span className="mission__state">{describeMission(mission, game)}</span>
-          </li>
-        ))}
-      </ol>
-      {game.proposal_number !== null && (
-        <p className="muted">
-          本任务已否决 {rejected}/{game.max_rejected_proposals} 次组队；满{" "}
-          {game.max_rejected_proposals} 次邪恶方直接获胜。
-        </p>
-      )}
-    </section>
-  );
-}
-
-function describeMission(mission: Mission, game: Game): string {
-  if (mission.outcome === "success") {
-    return `✓ 成功（${mission.fail_votes ?? 0} 张失败）`;
-  }
-  if (mission.outcome === "fail") {
-    return `✗ 失败（${mission.fail_votes ?? 0} 张失败）`;
-  }
-  const needsTwo = mission.fails_required > 1 ? `需 ${mission.fails_required} 张失败` : "";
-  if (mission.number === game.current_mission_number && game.phase !== "finished") {
-    return needsTwo ? `进行中 · ${needsTwo}` : "进行中";
-  }
-  return needsTwo || "未开始";
-}
-
-function PlayerRow({ player, game }: { player: Player; game: Game }) {
-  const onProposedTeam = game.proposed_team.includes(player.id);
-  const mission = game.missions.find((m) => m.number === game.current_mission_number);
-  const onMission = game.phase === "mission_vote" && (mission?.team.includes(player.id) ?? false);
-
-  return (
-    <li className={`player${player.is_you ? " player--you" : ""}`}>
-      <span className="player__name">{player.name}</span>
-      <span className="player__badges">
-        {player.is_you && <span className="badge badge--you">你</span>}
-        {player.agent === "random" && <span className="badge">机器人</span>}
-        {player.agent === "llm" && <span className="badge badge--ai">AI</span>}
-        {player.thinking && <span className="badge badge--thinking">思考中…</span>}
-        {player.last_turn === "fallback" && (
-          <span className="badge badge--fallback">
-            上一步由机器人代打
-            {player.fallback_reason !== null && `：${FALLBACK_REASONS[player.fallback_reason]}`}
-          </span>
-        )}
-        {player.is_leader && game.phase !== "finished" && (
-          <span className="badge badge--leader">队长</span>
-        )}
-        {onProposedTeam && <span className="badge badge--team">提名中</span>}
-        {onMission && <span className="badge badge--team">任务中</span>}
-        {game.phase === "team_vote" && game.team_voted.includes(player.id) && (
-          <span className="badge">已投票</span>
-        )}
-        {game.phase === "mission_vote" && game.mission_played.includes(player.id) && (
-          <span className="badge">已出牌</span>
-        )}
-        {player.seen_as !== null && (
-          <span className="badge badge--known">你知道：{SEEN_AS_NAMES[player.seen_as]}</span>
-        )}
-        {game.assassination_target_id === player.id && (
-          <span className="badge badge--evil">被刺杀</span>
-        )}
-        {player.role !== null && !player.is_you && (
-          <span className={`badge badge--${player.alignment ?? "good"}`}>
-            {ROLE_NAMES[player.role]}
-          </span>
-        )}
-        {player.role !== null && player.is_you && game.phase === "finished" && (
-          <span className={`badge badge--${player.alignment ?? "good"}`}>
-            {ROLE_NAMES[player.role]}
-          </span>
-        )}
-      </span>
-    </li>
   );
 }

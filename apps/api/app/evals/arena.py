@@ -13,6 +13,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from app.agents import table_bot
 from app.agents.llm_player import LlmPlayer
 from app.agents.model import Pricing, TokenBudget
 from app.agents.policy_fallback import choose_action
@@ -26,7 +27,7 @@ from app.game.rulesets import OFFICIAL, Alignment
 from app.game.state import Phase
 from app.game.views import build_player_view
 
-Policy = Literal["random", "llm"]
+Policy = Literal["random", "bot", "llm"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +104,10 @@ def play_match(
             if turn.note is not None:
                 notes[view.you_id] = turn.note
             action = turn.action
+        elif policy == "bot":
+            action = table_bot.choose_action(
+                view, rng, history=public_log(events), names=names, language="en", salt=str(seed)
+            )
         else:
             action = choose_action(view, rng)
 

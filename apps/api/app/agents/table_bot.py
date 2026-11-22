@@ -265,7 +265,8 @@ class _Mind:
             if not last_chance and self.blend_in:
                 return Stance(approve=True, worry=None, voiced=voiced)
             # Reject a clean team and give the most plausible public reason for it.
-            scapegoat = max(members, key=lambda pid: self.public.suspicion[pid], default=None)
+            outsiders = [member for member in members if member not in self.known_evil]
+            scapegoat = max(outsiders, key=lambda pid: self.public.suspicion[pid], default=None)
             return Stance(approve=False, worry=scapegoat, voiced=voiced)
 
         worries = sorted((m for m in members if self.distrusts(m)), key=self.score, reverse=True)
@@ -383,6 +384,12 @@ def _say(mind: _Mind, names: Mapping[str, str], language: Language) -> Speak:
                 if zh
                 else f"I am taking {chosen}: the players I trust most right now."
             )
+    elif stance.approve and not mind.public.votes:
+        parts.append(
+            "还没有任何线索，我先让这队出发，看结果再说。"
+            if zh
+            else "Nothing to judge by yet. I will let this team go and see what happens."
+        )
     elif stance.approve:
         parts.append(
             "这支队伍我能接受，会投赞成。" if zh else "I can live with this team. I will approve."

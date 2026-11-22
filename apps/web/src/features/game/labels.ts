@@ -22,7 +22,7 @@ export const ROLE_NAMES: Record<Role, string> = {
 export const ROLE_HINTS: Record<Role, string> = {
   merlin: "你知道谁是邪恶方。别暴露自己，否则会被刺杀。",
   percival: "你知道哪两个人是梅林和莫甘娜，但分不清谁是谁。",
-  loyal_servant: "你没有额外信息。靠投票和任务结果找出邪恶方。",
+  loyal_servant: "你没有额外信息。靠发言、投票和任务结果找出邪恶方。",
   assassin: "你认识同伴。若正义方赢下三次任务，由你指认梅林。",
   morgana: "你认识同伴。在派西维尔眼里，你看起来像梅林。",
   mordred: "你认识同伴。梅林看不见你。",
@@ -38,6 +38,7 @@ export const ALIGNMENT_NAMES: Record<Alignment, string> = {
 export const PHASE_NAMES: Record<Phase, string> = {
   lobby: "等待开始",
   team_proposal: "队长组队",
+  discussion: "轮流发言",
   team_vote: "组队投票",
   mission_vote: "执行任务",
   assassination: "刺杀梅林",
@@ -85,6 +86,9 @@ const ERROR_MESSAGES: Record<string, string> = {
   unknown_team_member: "选中的人不在这局里。",
   good_must_succeed: "正义方只能出成功牌。",
   invalid_target: "必须指认另一名玩家。",
+  not_your_turn_to_speak: "还没轮到你发言，画面已刷新。",
+  speech_too_long: "发言太长了，最多 200 字。",
+  invalid_suspect: "点名最多 3 人，且不能点自己。",
 };
 
 export function describeError(error: unknown): string {

@@ -17,7 +17,7 @@ from app.agents.contract import (
     decision_from_data,
     to_action,
 )
-from app.game.actions import Assassinate, ProposeTeam, VoteMission, VoteTeam
+from app.game.actions import Assassinate, ProposeTeam, Speak, VoteMission, VoteTeam
 from app.game.engine import apply_action, replay
 from app.game.public_log import public_log
 from app.game.rulesets import Alignment, Role
@@ -296,3 +296,86 @@ def test_a_player_with_nothing_to_do_can_do_nothing() -> None:
 
     with pytest.raises(InvalidDecision, match="You may only do: nothing"):
         to_action(build_player_view(state, idle), decision_from_data(decision()))
+
+
+# --- Speaking ------------------------------------------------------------------
+
+
+def speaking() -> tuple[GameState, str]:
+    state, _ = position(Phase.DISCUSSION)
+    assert state.next_speaker_id is not None
+    return state, state.next_speaker_id
+
+
+def test_a_speech_is_made_in_this_seats_name_and_cleaned() -> None:
+    state, speaker = speaking()
+    view = build_player_view(state, speaker)
+    target = view.legal_actions[0].targets[0]
+    answer = decision(action="speak", speech="  I doubt\nthis team. ", suspects=[target])
+
+    action = to_action(view, decision_from_data(answer))
+
+    assert action == Speak(
+        player_id=speaker,
+        text="I doubt this team.",
+        suspects=(target,),
+        expected_version=view.version,
+    )
+    apply_action(state, action)
+
+
+def test_a_speech_that_runs_on_is_cut_not_refused() -> None:
+    state, speaker = speaking()
+    view = build_player_view(state, speaker)
+
+    action = to_action(view, decision_from_data(decision(action="speak", speech="x" * 900)))
+
+    assert isinstance(action, Speak) and len(action.text) == 200
+    apply_action(state, action)
+
+
+@pytest.mark.parametrize("suspects", [["self"], ["p999"], ["dup", "dup"], ["a", "b", "c", "d"]])
+def test_suspects_must_come_from_the_offered_targets(suspects: list[str]) -> None:
+    state, speaker = speaking()
+    view = build_player_view(state, speaker)
+    targets = view.legal_actions[0].targets
+    named = {"self": speaker, "dup": targets[0], "a": targets[0], "b": targets[1]}
+    named |= {"c": targets[2], "d": targets[3]}
+    answer = decision(action="speak", suspects=[named.get(item, item) for item in suspects])
+
+    with pytest.raises(InvalidDecision, match="suspects"):
+        to_action(view, decision_from_data(answer))
+
+
+def test_suspects_must_be_a_list_of_strings() -> None:
+    with pytest.raises(InvalidDecision, match="suspects"):
+        decision_from_data(decision(suspects=[1, 2]))
+    with pytest.raises(InvalidDecision, match="suspects"):
+        decision_from_data(decision(suspects="p2"))
+    with pytest.raises(InvalidDecision, match="speech"):
+        decision_from_data(decision(speech=None))
+
+
+def test_nobody_speaks_when_it_is_not_their_turn() -> None:
+    state, speaker = speaking()
+    waiting = next(pid for pid in state.player_ids if pid != speaker)
+
+    with pytest.raises(InvalidDecision, match="not available"):
+        to_action(build_player_view(state, waiting), decision_from_data(decision(action="speak")))
+
+
+def test_a_player_is_told_what_has_been_said_so_far() -> None:
+    game = play_random_game(player_count=5, seed=3)
+    spoken = [index for index, event in enumerate(game.events) if event.type == "player_spoke"]
+    events = game.events[: spoken[1] + 1]
+    state = replay(game.initial, events)
+    assert state.next_speaker_id is not None
+    view = build_player_view(state, state.next_speaker_id)
+
+    sent = build_observation(view, names=NAMES, history=public_log(events)).data
+
+    assert [speech["player"] for speech in sent["speeches_on_this_proposal"]] == [
+        speech.player_id for speech in state.speeches
+    ]
+    assert sent["legal_actions"][0]["type"] == "speak"
+    assert [entry["kind"] for entry in sent["public_history"]].count("speech") == 2

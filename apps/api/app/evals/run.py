@@ -146,6 +146,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         matches = arena.play_series(
             PLAYER_COUNTS, args.random_games, arena.Matchup("random", "random")
         )
+        # The reasoning bot that fills seats in real games, against itself and against random.
+        for baseline in (
+            arena.Matchup("bot", "bot"),
+            arena.Matchup("bot", "random"),
+            arena.Matchup("random", "bot"),
+        ):
+            matches += arena.play_series(PLAYER_COUNTS, args.random_games, baseline)
         if model is not None:
             budget = TokenBudget(settings.llm_max_tokens_per_game, pricing)
             llm = LlmPlayer(
@@ -155,7 +162,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 timeout_seconds=settings.llm_player_timeout_seconds,
             )
             counts = [int(count) for count in args.players.split(",") if count]
-            for matchup in (arena.Matchup("llm", "random"), arena.Matchup("random", "llm")):
+            for matchup in (
+                arena.Matchup("llm", "random"),
+                arena.Matchup("random", "llm"),
+                arena.Matchup("llm", "bot"),
+                arena.Matchup("bot", "llm"),
+            ):
                 matches += arena.play_series(
                     counts, args.model_games, matchup, llm=llm, budget=budget
                 )

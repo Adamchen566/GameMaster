@@ -450,24 +450,86 @@ input[aria-invalid="true"] {
   font-size: 13px;
 }
 
-.missions {
+.page--table {
+  width: min(100%, 1080px);
+}
+
+/* The round table: seats on an oval, the five mission cards in the middle. */
+.table {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  min-height: 560px;
+  margin: 72px 0 8px;
+}
+
+.table::before {
+  position: absolute;
+  inset: 14% 13%;
+  border: 1px solid var(--primary-border);
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 50% 38%, var(--bg-overlay), var(--bg-surface) 72%);
+  box-shadow:
+    inset 0 0 0 10px var(--bg-raised),
+    0 18px 60px rgba(0, 0, 0, 0.45);
+  content: "";
+}
+
+.table__centre {
+  position: absolute;
+  top: 50%;
+  left: 50%;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 8px;
+  justify-items: center;
+  gap: 10px;
+  width: min(60%, 540px);
+  text-align: center;
+  transform: translate(-50%, -50%);
+}
+
+.table__centre h2 {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+}
+
+.table__track {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.table__proposal {
+  font-size: 13px;
+}
+
+.missions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
   list-style: none;
 }
 
 .mission {
   display: grid;
+  align-content: space-between;
+  justify-items: center;
   gap: 4px;
-  padding: 12px;
-  border: 1px solid var(--border-subtle);
+  width: 86px;
+  height: 118px;
+  padding: 10px 6px;
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-md);
   background: var(--bg-raised);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.35);
 }
 
 .mission[aria-current="step"] {
   border-color: var(--primary);
+  box-shadow: var(--shadow-glow);
+  transform: translateY(-4px);
 }
 
 .mission__number {
@@ -475,53 +537,210 @@ input[aria-invalid="true"] {
   font-size: 12px;
 }
 
-.mission__size {
-  font-family: var(--font-mono);
+.mission__state {
+  color: var(--text-muted);
+  font-family: var(--font-display);
   font-size: 22px;
+  font-weight: 700;
 }
 
-.mission__state {
-  font-size: 13px;
+.mission__detail {
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.mission--success {
+  border-color: var(--success);
+  background: var(--success-subtle);
 }
 
 .mission--success .mission__state {
   color: var(--success);
 }
 
+.mission--fail {
+  border-color: var(--danger);
+  background: var(--danger-subtle);
+}
+
 .mission--fail .mission__state {
   color: var(--danger);
 }
 
-.players {
+.table__seats {
+  position: absolute;
+  inset: 0;
+  list-style: none;
+}
+
+.seat {
+  position: absolute;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  width: 150px;
+  padding: 8px 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+  text-align: center;
+  transform: translate(-50%, -50%);
+}
+
+.seat:hover {
+  z-index: 3;
+}
+
+.seat--you {
+  border-color: var(--primary-border);
+}
+
+.seat--on-team {
+  box-shadow: 0 0 0 2px var(--secondary);
+}
+
+.seat--speaking {
+  border-color: var(--primary);
+  box-shadow: var(--shadow-glow);
+}
+
+.seat__name {
+  font-weight: 600;
+}
+
+.seat__badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+}
+
+.seat .badge {
+  padding: 1px 7px;
+  font-size: 11px;
+}
+
+.badge--speaking {
+  border-color: var(--primary);
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+/* What the seat said about the team on the table, as a bubble above it. */
+.seat__speech {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  z-index: 2;
+  display: -webkit-box;
+  width: 196px;
+  padding: 6px 10px;
+  overflow: hidden;
+  border: 1px solid var(--primary-border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  background: var(--primary-subtle);
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: left;
+  transform: translateX(-50%);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.seat:hover .seat__speech {
+  -webkit-line-clamp: unset;
+}
+
+.below-table {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.field textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  background: var(--bg-base);
+  font: inherit;
+  resize: vertical;
+}
+
+.field textarea:focus-visible {
+  border-color: var(--focus-ring);
+  outline: none;
+  box-shadow: var(--shadow-glow);
+}
+
+.speeches {
   display: grid;
   gap: 8px;
   list-style: none;
 }
 
-.player {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 16px;
-  padding: 12px 16px;
+.speech {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 2px 12px;
+  padding: 10px 12px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   background: var(--bg-raised);
 }
 
-.player--you {
-  border-color: var(--primary-border);
-}
-
-.player__name {
+.speech__who {
+  color: var(--primary);
   font-weight: 600;
 }
 
-.player__badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.speech__suspects {
+  grid-column: 2;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+/* Too narrow for an oval: the same seats, in seat order, as a grid. */
+@media (max-width: 860px) {
+  .table {
+    display: grid;
+    gap: 16px;
+    aspect-ratio: auto;
+    min-height: 0;
+    margin: 0;
+  }
+
+  .table::before {
+    display: none;
+  }
+
+  .table__centre,
+  .table__seats,
+  .seat,
+  .seat__speech {
+    position: static;
+    width: auto;
+    transform: none;
+  }
+
+  .table__seats {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 8px;
+  }
+
+  .seat__speech {
+    order: 3;
+  }
+
+  .mission {
+    width: 62px;
+    height: 104px;
+  }
 }
 
 .result {

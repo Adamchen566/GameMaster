@@ -3,6 +3,7 @@ import { getApiBaseUrl } from "../config";
 export type Phase =
   | "lobby"
   | "team_proposal"
+  | "discussion"
   | "team_vote"
   | "mission_vote"
   | "assassination"
@@ -107,9 +108,19 @@ export interface TeamVote {
   approved: boolean;
 }
 
+/** What one player said about the proposed team. Everyone at the table sees it. */
+export interface Speech {
+  player_id: string;
+  /** Empty when the player passed. */
+  text: string;
+  /** Players the speaker openly said they do not trust. */
+  suspects: string[];
+}
+
 export type ActionType =
   | "start_game"
   | "propose_team"
+  | "speak"
   | "vote_team"
   | "vote_mission"
   | "assassinate";
@@ -139,6 +150,10 @@ export interface Game {
   max_rejected_proposals: number;
   missions_to_win: number;
   proposed_team: string[];
+  /** Speeches about the latest proposal, in speaking order. */
+  speeches: Speech[];
+  /** Whose turn it is to speak, during the discussion. */
+  speaker_id: string | null;
   team_voted: string[];
   your_team_vote: boolean | null;
   last_team_vote: TeamVote | null;
@@ -162,6 +177,7 @@ export interface RoomCreated {
 export type ActionRequest =
   | { type: "start_game" }
   | { type: "propose_team"; team: string[] }
+  | { type: "speak"; text: string; suspects: string[] }
   | { type: "vote_team"; approve: boolean }
   | { type: "vote_mission"; success: boolean }
   | { type: "assassinate"; target_id: string };
