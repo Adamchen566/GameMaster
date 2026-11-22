@@ -197,7 +197,7 @@
 
 本人要求参考多模型同桌玩狼人杀的项目继续做，其他模型只接 DeepSeek。说明见 [`architecture.md`](architecture.md) 第 8 节。
 
-- [x] 每个座位单独选由谁来打：内置机器人、Claude（API）、DeepSeek（API）、本机 Claude Code。
+- [x] 每个座位单独选由谁来打：内置机器人、Claude（API）、DeepSeek（API）、本机 Claude Code、本机 Codex（本人要求用 Codex 的额度）。
 - [x] 大厅逐个显示每种模型能不能用、缺什么。
 - [x] 10 个座位的人设（名字、性格、颜色），写进模型席位的系统提示。
 - [x] 心声：观战时实时看，对局结束后复盘。
@@ -205,6 +205,7 @@
 - [x] 浏览器朗读、投票连线。
 - [ ] 用真实的 DeepSeek 密钥打一局。（需要本人提供 `DEEPSEEK_API_KEY`，会产生费用。）
 - [ ] 用本机 Claude Code 打一局。（不要密钥，会用本人的订阅额度，要先确认。）
+- [x] 用本机 Codex 真实打通：单次决定和一整局，见 PR 说明。
 
 ### v1.0 作品集
 

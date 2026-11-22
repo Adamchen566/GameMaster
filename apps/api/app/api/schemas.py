@@ -35,7 +35,7 @@ class CreateRoomRequest(BaseModel):
     ai_style: Literal["baseline", "cautious", "aggressive"] = "baseline"
     gm: Literal["off", "template", "ai"] = "template"
     language: Literal["zh", "en"] = "zh"
-    seats: list[Literal["bot", "claude", "deepseek", "claude_code"]] | None = None
+    seats: list[Literal["bot", "claude", "deepseek", "claude_code", "codex"]] | None = None
     """Who plays each bot seat, in seat order. Replaces `ai_seats` when given."""
     spectate: bool = False
     """Nobody sits down: every seat is a bot and you watch, seeing every role."""

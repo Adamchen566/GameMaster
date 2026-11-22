@@ -54,7 +54,7 @@ export interface Player {
   seen_as: "evil" | "merlin_or_morgana" | null;
 }
 
-export type DriverId = "claude" | "deepseek" | "claude_code";
+export type DriverId = "claude" | "deepseek" | "claude_code" | "codex";
 /** Who plays one bot seat. */
 export type SeatChoice = "bot" | DriverId;
 

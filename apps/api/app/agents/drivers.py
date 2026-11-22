@@ -6,6 +6,7 @@ can mix them:
     claude       the Claude API                needs ANTHROPIC_API_KEY, paid per call
     deepseek     the DeepSeek API              needs DEEPSEEK_API_KEY, paid per call
     claude_code  Claude Code on this computer  needs a login, uses that subscription
+    codex        Codex on this computer        needs a ChatGPT login, uses that subscription
 
 A driver that cannot be used is still listed, with the reason, so the lobby can
 say what is missing instead of hiding the choice.
@@ -19,11 +20,16 @@ from dataclasses import dataclass
 from app.agents.model import ModelClient
 from app.config import Settings
 
-DRIVER_IDS = ("claude", "deepseek", "claude_code")
+DRIVER_IDS = ("claude", "deepseek", "claude_code", "codex")
 API_DRIVERS = ("claude", "deepseek")
 """Fast enough for the game master, who has a few seconds per line."""
 
-LABELS = {"claude": "Claude", "deepseek": "DeepSeek", "claude_code": "Claude Code"}
+LABELS = {
+    "claude": "Claude",
+    "deepseek": "DeepSeek",
+    "claude_code": "Claude Code",
+    "codex": "Codex",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,7 +63,10 @@ def _wanted(settings: Settings) -> set[str] | None:
 
 
 def build_drivers(
-    settings: Settings, *, find_claude_code: Callable[[], str | None] | None = None
+    settings: Settings,
+    *,
+    find_claude_code: Callable[[], str | None] | None = None,
+    find_codex: Callable[[], str | None] | None = None,
 ) -> dict[str, Driver]:
     """Every known driver, usable or not, in the order the lobby shows them."""
     wanted = _wanted(settings)
@@ -130,6 +139,19 @@ def build_drivers(
             drivers["claude_code"] = Driver(
                 "claude_code", LABELS["claude_code"], local, timeout, check=local.problem
             )
+
+    timeout = settings.codex_timeout_seconds
+    if not enabled("codex"):
+        drivers["codex"] = off("codex", "switched_off", timeout)
+    else:
+        from app.agents import codex_model
+
+        executable = (find_codex or codex_model.find_codex)()
+        if executable is None:
+            drivers["codex"] = off("codex", "codex_not_installed", timeout)
+        else:
+            codex = codex_model.CodexModel(executable, model=settings.codex_model)
+            drivers["codex"] = Driver("codex", LABELS["codex"], codex, timeout, check=codex.problem)
 
     return drivers
 

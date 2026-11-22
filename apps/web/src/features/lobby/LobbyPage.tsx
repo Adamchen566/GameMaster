@@ -292,5 +292,8 @@ function costNote(seats: SeatChoice[]): string {
   if (used.has("claude_code")) {
     parts.push("本机 Claude Code 的座位用你自己的订阅额度，每步要十几秒到一两分钟");
   }
+  if (used.has("codex")) {
+    parts.push("本机 Codex 的座位用你的 ChatGPT 额度，每步几秒到半分钟");
+  }
   return `${parts.join("；")}。`;
 }

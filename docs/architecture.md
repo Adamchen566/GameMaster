@@ -332,13 +332,14 @@ PlayerView ──build_observation──> 观察(JSON) ──> ModelClient ─�
 
 | 环境变量 | 默认 | 说明 |
 | --- | --- | --- |
-| `LLM_DRIVERS` | `auto` | 提供哪些模型来源：`auto`（配好哪个就开哪个）、`none`，或 `claude,deepseek,claude_code` 的组合 |
+| `LLM_DRIVERS` | `auto` | 提供哪些模型来源：`auto`（配好哪个就开哪个）、`none`，或 `claude,deepseek,claude_code,codex` 的组合 |
 | `ANTHROPIC_API_KEY` | — | 开启 Claude 席位 |
 | `LLM_PROVIDER` | `none` | 旧开关：设为 `anthropic` 也开启 Claude（密钥由 SDK 自己找） |
 | `DEEPSEEK_API_KEY` | — | 开启 DeepSeek 席位 |
 | `DEEPSEEK_MODEL` / `DEEPSEEK_BASE_URL` | `deepseek-flash` / `https://api.deepseek.com` | |
 | `DEEPSEEK_TIMEOUT_SECONDS` | `30` | |
 | `CLAUDE_CODE_MODEL` / `CLAUDE_CODE_TIMEOUT_SECONDS` | `sonnet` / `120` | 本机 Claude Code，不要密钥，要登录 |
+| `CODEX_MODEL` / `CODEX_TIMEOUT_SECONDS` | Codex 默认 / `120` | 本机 Codex，不要密钥，要用 ChatGPT 登录 |
 | `LLM_MODEL` | `claude-opus-5-5` | |
 | `LLM_EFFORT` | `low` | |
 | `LLM_MAX_TOKENS_PER_GAME` | `300000` | 输入加输出；用完后该局的 AI 席位改由随机 bot 走 |
@@ -439,6 +440,7 @@ PlayerView（这个席位知道的）──┤
 | `claude` | `anthropic_model.py`，官方 SDK | 结构化输出，按 JSON Schema 保证格式 | |
 | `deepseek` | `deepseek_model.py`，`httpx` 调 `/chat/completions` | JSON 模式只保证“是 JSON”，字段在系统提示里写明 | 关闭思考模式，否则超时 |
 | `claude_code` | `claude_code_model.py`，运行本机 `claude -p` | 同上，提示里写明字段 | 不给任何工具（`--tools ""`）、不读 MCP、空的临时目录、不存会话；提示从标准输入传，不上命令行 |
+| `codex` | `codex_model.py`，运行本机 `codex exec` | `--output-schema` 按 JSON Schema 约束 | 关掉命令行和其他工具（`--disable shell_tool` 等）、只读沙箱、空的临时目录、不读本人的 Codex 配置和规则、不存会话；提示从标准输入传。桌面版装的 `codex.exe` 不在 PATH 上时去 `%LOCALAPPDATA%\OpenAI\Codex\bin` 找最新的 |
 
 不论哪种，模型的回答都只是提议，照旧经过 `to_action` 和规则引擎检查；失败、超时、不合法都由内置机器人代打，座位上显示原因。`GET /config` 列出每个驱动能不能用、缺什么（`missing_deepseek_api_key`、`not_logged_in` 等），大厅据此显示。
 

@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     """
     llm_drivers: str = "auto"
     """Which ways of reaching a model to offer: "auto" (whatever is set up), "none",
-    or a comma list of `claude`, `deepseek`, `claude_code`."""
+    or a comma list of `claude`, `deepseek`, `claude_code`, `codex`."""
     anthropic_api_key: str | None = None
     """Enables Claude seats. Every turn is a paid call."""
     deepseek_api_key: str | None = None
@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     claude_code_model: str = "sonnet"
     """Model alias passed to the local Claude Code client."""
     claude_code_timeout_seconds: float = 120.0
+    codex_model: str | None = None
+    """Model passed to the local Codex client; unset is Codex's own default."""
+    codex_timeout_seconds: float = 120.0
     """One run of the local client takes many seconds."""
     llm_model: str = "claude-opus-5-5"
     llm_effort: Literal["low", "medium", "high", "xhigh", "max"] = "low"

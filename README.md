@@ -48,8 +48,9 @@ $env:DATABASE_URL = "sqlite:///./avalon.db"
 | Claude（API） | `ANTHROPIC_API_KEY` | 每个回合一次付费调用 |
 | DeepSeek（API） | `DEEPSEEK_API_KEY` | 每个回合一次付费调用 |
 | 本机 Claude Code | 装好 Claude Code 并登录一次（终端运行 `claude`），不要密钥 | 用你自己的订阅额度，每步十几秒到一两分钟 |
+| 本机 Codex | 装好 Codex（桌面版或命令行）并用 ChatGPT 登录一次，不要密钥 | 用你的 ChatGPT 额度，每步几秒到半分钟 |
 
-密钥写进 `apps/api/.env`（照 [`apps/api/.env.example`](apps/api/.env.example) 复制一份，已被 git 忽略），重启后端生效。每局有 token 上限（默认 30 万，`LLM_MAX_TOKENS_PER_GAME`）；全部配置项见 [`docs/architecture.md`](docs/architecture.md) 第 5.1 节。AI 主持只用 API（Claude 或 DeepSeek），Claude Code 太慢，不用来主持。
+密钥写进 `apps/api/.env`（照 [`apps/api/.env.example`](apps/api/.env.example) 复制一份，已被 git 忽略），重启后端生效。每局有 token 上限（默认 30 万，`LLM_MAX_TOKENS_PER_GAME`）；全部配置项见 [`docs/architecture.md`](docs/architecture.md) 第 5.1 节。AI 主持只用 API（Claude 或 DeepSeek），本机客户端太慢，不用来主持。
 
 也可以只看不打：大厅里选“观战”，所有座位都由 AI 来打，你能看到每个人的身份和“心声”（每个 AI 做决定时的真实想法）；上桌打的对局结束后，也能在复盘里看到所有心声。浏览器支持时可以打开“朗读”，用浏览器自带的声音念出每一句话（每个角色音高、语速不同）。
 

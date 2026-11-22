@@ -10,6 +10,7 @@ import httpx
 import pytest
 
 from app.agents.claude_code_model import ClaudeCodeModel
+from app.agents.codex_model import DISABLED_FEATURES, CodexModel
 from app.agents.contract import DECISION_SCHEMA
 from app.agents.deepseek_model import DeepSeekModel
 from app.agents.drivers import DRIVER_IDS, build_drivers, default_driver, narrator_driver
@@ -236,13 +237,14 @@ def settings(**values: Any) -> Settings:
 
 
 def test_nothing_is_offered_until_something_is_set_up() -> None:
-    drivers = build_drivers(settings(), find_claude_code=lambda: None)
+    drivers = build_drivers(settings(), find_claude_code=lambda: None, find_codex=lambda: None)
 
     assert tuple(drivers) == DRIVER_IDS
     assert {name: driver.problem for name, driver in drivers.items()} == {
         "claude": "missing_anthropic_api_key",
         "deepseek": "missing_deepseek_api_key",
         "claude_code": "claude_code_not_installed",
+        "codex": "codex_not_installed",
     }
     assert default_driver(drivers) is None
     assert narrator_driver(drivers) is None
@@ -250,12 +252,15 @@ def test_nothing_is_offered_until_something_is_set_up() -> None:
 
 def test_a_key_or_an_installed_client_turns_its_driver_on() -> None:
     drivers = build_drivers(
-        settings(deepseek_api_key="k"), find_claude_code=lambda: "C:/bin/claude.exe"
+        settings(deepseek_api_key="k"),
+        find_claude_code=lambda: "C:/bin/claude.exe",
+        find_codex=lambda: "C:/bin/codex.exe",
     )
 
     assert [name for name, driver in drivers.items() if driver.available] == [
         "deepseek",
         "claude_code",
+        "codex",
     ]
     chosen = default_driver(drivers)
     assert chosen is not None and chosen.id == "deepseek"
@@ -266,7 +271,7 @@ def test_a_key_or_an_installed_client_turns_its_driver_on() -> None:
 
 
 def test_only_a_local_client_means_seats_but_no_ai_game_master() -> None:
-    drivers = build_drivers(settings(), find_claude_code=lambda: "claude")
+    drivers = build_drivers(settings(), find_claude_code=lambda: "claude", find_codex=lambda: None)
 
     chosen = default_driver(drivers)
     assert chosen is not None and chosen.id == "claude_code"
@@ -276,13 +281,114 @@ def test_only_a_local_client_means_seats_but_no_ai_game_master() -> None:
 def test_drivers_can_be_limited_or_switched_off() -> None:
     everything = {"anthropic_api_key": "a", "deepseek_api_key": "d"}
 
-    none = build_drivers(
-        settings(llm_drivers="none", **everything), find_claude_code=lambda: "claude"
-    )
-    one = build_drivers(
-        settings(llm_drivers="deepseek", **everything), find_claude_code=lambda: "claude"
-    )
+    def build(drivers: str) -> dict[str, Any]:
+        return build_drivers(
+            settings(llm_drivers=drivers, **everything),
+            find_claude_code=lambda: "claude",
+            find_codex=lambda: "codex",
+        )
+
+    none, one = build("none"), build("deepseek")
 
     assert not any(driver.available for driver in none.values())
     assert {driver.problem for driver in none.values()} == {"switched_off"}
     assert [name for name, driver in one.items() if driver.available] == ["deepseek"]
+
+
+# --- Codex on this computer -----------------------------------------------------------
+
+
+class FakeCodex:
+    """Stands in for `codex exec`: writes its answer to the file it is told to, like Codex does."""
+
+    def __init__(
+        self,
+        answer: str | None = "",
+        output: str = "",
+        code: int = 0,
+        fail: Exception | None = None,
+    ) -> None:
+        self.answer, self.output, self.code, self.fail = answer, output, code, fail
+        self.runs: list[tuple[list[str], str, float]] = []
+        self.schema: dict[str, Any] | None = None
+
+    def __call__(self, arguments: Sequence[str], stdin: str, timeout: float) -> tuple[int, str]:
+        self.runs.append((list(arguments), stdin, timeout))
+        if self.fail is not None:
+            raise self.fail
+        if "--output-schema" in arguments:
+            path = arguments[list(arguments).index("--output-schema") + 1]
+            with open(path, encoding="utf-8") as file:
+                self.schema = json.load(file)
+        if self.answer is not None and "--output-last-message" in arguments:
+            path = arguments[list(arguments).index("--output-last-message") + 1]
+            with open(path, "w", encoding="utf-8") as file:
+                file.write(self.answer)
+        return self.code, self.output
+
+
+def test_codex_runs_without_tools_in_a_read_only_sandbox_and_reads_its_answer_file() -> None:
+    run = FakeCodex(json.dumps(ANSWER), output="codex\n{...}\ntokens used\n14,537\n")
+
+    reply = ask(CodexModel("codex", run=run))
+
+    assert reply.data == ANSWER
+    assert reply.output_tokens == 14537
+    [(arguments, stdin, timeout)] = run.runs
+    assert arguments[:2] == ["codex", "exec"]
+    assert arguments[-1] == "-", "the prompt comes from standard input"
+    assert arguments[arguments.index("--sandbox") + 1] == "read-only"
+    for flag in ("--ephemeral", "--ignore-user-config", "--ignore-rules", "--skip-git-repo-check"):
+        assert flag in arguments
+    disabled = {arguments[i + 1] for i, value in enumerate(arguments) if value == "--disable"}
+    assert disabled == set(DISABLED_FEATURES) and "shell_tool" in disabled
+    assert "--dangerously-bypass-approvals-and-sandbox" not in arguments
+    assert all("team_vote" not in argument and "Avalon" not in argument for argument in arguments)
+    assert "You play Avalon." in stdin and '{"phase": "team_vote"}' in stdin
+    # The answer is held to the same schema the Claude API uses.
+    assert run.schema == DECISION_SCHEMA
+    assert timeout == 5
+
+
+def test_codex_failures() -> None:
+    def model(run: FakeCodex) -> CodexModel:
+        return CodexModel("codex", run=run)
+
+    with pytest.raises(ModelTimeout):
+        ask(model(FakeCodex(fail=TimeoutError("120s"))))
+    with pytest.raises(ModelUnavailable):
+        ask(model(FakeCodex(fail=FileNotFoundError("codex"))))
+    with pytest.raises(ModelUnavailable, match="usage limit"):
+        ask(model(FakeCodex(None, output="error: usage limit reached", code=1)))
+    with pytest.raises(ModelBadOutput):
+        ask(model(FakeCodex("I approve.")))
+
+
+def test_codex_reports_whether_it_is_logged_in() -> None:
+    logged_in = FakeCodex(None, output="Logged in using ChatGPT")
+    logged_out = FakeCodex(None, output="Not logged in", code=1)
+
+    assert CodexModel("codex", run=logged_in).problem() is None
+    assert CodexModel("codex", run=logged_out).problem() == "codex_not_logged_in"
+    assert logged_in.runs[0][0] == ["codex", "login", "status"]
+
+
+def test_codex_is_found_where_the_desktop_app_installs_it(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import os
+
+    from app.agents import codex_model
+
+    older = tmp_path / "OpenAI" / "Codex" / "bin" / "a" / "codex.exe"
+    newer = tmp_path / "OpenAI" / "Codex" / "bin" / "b" / "codex.exe"
+    for path, when in ((older, 1_000), (newer, 2_000)):
+        path.parent.mkdir(parents=True)
+        path.write_text("")
+        os.utime(path, (when, when))
+    monkeypatch.setattr(codex_model.shutil, "which", lambda name: None)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+
+    assert codex_model.find_codex() == str(newer)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "nowhere"))
+    assert codex_model.find_codex() is None

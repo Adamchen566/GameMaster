@@ -71,6 +71,7 @@ export const DRIVER_NAMES: Record<DriverId, string> = {
   claude: "Claude（API）",
   deepseek: "DeepSeek（API）",
   claude_code: "本机 Claude Code",
+  codex: "本机 Codex",
 };
 
 /** Short names for the badge on a seat. */
@@ -78,6 +79,7 @@ export const DRIVER_BADGES: Record<DriverId, string> = {
   claude: "Claude",
   deepseek: "DeepSeek",
   claude_code: "Claude Code",
+  codex: "Codex",
 };
 
 export const DRIVER_PROBLEMS: Record<string, string> = {
@@ -85,7 +87,9 @@ export const DRIVER_PROBLEMS: Record<string, string> = {
   missing_deepseek_api_key: "没有设置 DEEPSEEK_API_KEY",
   claude_code_not_installed: "这台电脑上没找到 Claude Code",
   not_logged_in: "Claude Code 还没登录，先在终端运行 claude 登录一次",
-  not_responding: "Claude Code 没有响应",
+  not_responding: "本机客户端没有响应",
+  codex_not_installed: "这台电脑上没找到 Codex",
+  codex_not_logged_in: "Codex 还没登录，先打开 Codex 用 ChatGPT 登录一次",
   switched_off: "已在服务器配置里关闭",
 };
 
