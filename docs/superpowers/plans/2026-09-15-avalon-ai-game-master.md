@@ -1,5 +1,7 @@
 # Avalon AI Game Master Implementation Plan
 
+> **2026-11-22 更新：** 执行顺序和范围以 [`docs/roadmap.md`](../../roadmap.md) 为准，本文件保留各 Task 的详细步骤。Task 6（WebSocket 联机）、Task 4/5/11 中的多真人部分，以及 11–12 人扩展规则目前暂缓。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 独立完成并上线一个支持 5–12 名真人或 AI 玩家混合参与的阿瓦隆平台，用真实证据证明 React/TypeScript、FastAPI、PostgreSQL、实时通信、LLM Agent、评测、测试与部署能力。
