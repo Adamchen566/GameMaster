@@ -6,6 +6,16 @@ import App from "./App";
 describe("API status", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("requests the API base URL configured in the environment", () => {
+    vi.stubEnv("VITE_API_BASE_URL", "https://api.example.test/");
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => undefined)));
+
+    render(<App />);
+
+    expect(fetch).toHaveBeenCalledWith("https://api.example.test/health");
   });
 
   it("shows a connecting state while the health request is pending", () => {
@@ -37,6 +47,6 @@ describe("API status", () => {
     render(<App />);
 
     expect(await screen.findByText("无法连接服务")).toBeInTheDocument();
-    expect(screen.getByText("请确认后端已在 8000 端口运行。")).toBeInTheDocument();
+    expect(screen.getByText("请确认后端服务已启动。")).toBeInTheDocument();
   });
 });

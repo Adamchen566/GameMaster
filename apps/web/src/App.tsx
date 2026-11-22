@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { getApiBaseUrl } from "./config";
 import "./styles.css";
 
 type ApiStatus = "connecting" | "online" | "offline";
@@ -8,7 +9,7 @@ export default function App() {
   const [status, setStatus] = useState<ApiStatus>("connecting");
 
   useEffect(() => {
-    fetch("/api/health")
+    fetch(`${getApiBaseUrl()}/health`)
       .then((response) => {
         if (!response.ok) {
           throw new Error("Health request failed");
@@ -45,7 +46,7 @@ export default function App() {
       eyebrow: "Council gateway · 02",
       title: "城门暂闭",
       message: "无法连接服务",
-      detail: "请确认后端已在 8000 端口运行。",
+      detail: "请确认后端服务已启动。",
     },
   }[status];
 
