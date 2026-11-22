@@ -53,6 +53,7 @@ from app.game.state import (
     Phase,
     PlayerState,
     TeamVote,
+    TeamVoteRecord,
     WinReason,
 )
 
@@ -356,6 +357,7 @@ def _apply_event(state: GameState, event: GameEvent) -> GameState:
                 phase=Phase.MISSION_VOTE,
                 proposed_team=(),
                 team_votes=(),
+                last_team_vote=_vote_record(state, event, approved=True),
             )
         case TeamRejected():
             return replace(
@@ -365,6 +367,7 @@ def _apply_event(state: GameState, event: GameEvent) -> GameState:
                 team_votes=(),
                 rejected_proposals=state.rejected_proposals + 1,
                 leader_id=event.next_leader_id,
+                last_team_vote=_vote_record(state, event, approved=False),
             )
         case MissionVoteCast():
             mission_vote = MissionVote(player_id=event.player_id, success=event.success)
@@ -384,6 +387,19 @@ def _apply_event(state: GameState, event: GameEvent) -> GameState:
             )
         case _:
             raise TypeError(f"Unsupported event type: {type(event).__name__}")
+
+
+def _vote_record(
+    state: GameState, event: TeamApproved | TeamRejected, *, approved: bool
+) -> TeamVoteRecord:
+    return TeamVoteRecord(
+        mission_number=event.mission_number,
+        proposal_number=event.proposal_number,
+        team=state.proposed_team,
+        approvals=event.approvals,
+        rejections=event.rejections,
+        approved=approved,
+    )
 
 
 def _update_current_mission(state: GameState, **changes: Any) -> GameState:

@@ -69,6 +69,18 @@ class MissionVote:
 
 
 @dataclass(frozen=True, slots=True)
+class TeamVoteRecord:
+    """The revealed result of the most recent team vote."""
+
+    mission_number: int
+    proposal_number: int
+    team: tuple[str, ...]
+    approvals: tuple[str, ...]
+    rejections: tuple[str, ...]
+    approved: bool
+
+
+@dataclass(frozen=True, slots=True)
 class GameState:
     game_id: str
     ruleset: RuleSet
@@ -86,6 +98,7 @@ class GameState:
     proposed_team: tuple[str, ...] = ()
     team_votes: tuple[TeamVote, ...] = ()
     mission_votes: tuple[MissionVote, ...] = ()
+    last_team_vote: TeamVoteRecord | None = None
     assassination_target_id: str | None = None
     winner: Alignment | None = None
     win_reason: WinReason | None = None
