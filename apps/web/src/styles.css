@@ -395,6 +395,61 @@ input[aria-invalid="true"] {
   background: var(--danger-subtle);
 }
 
+.badge--ai {
+  border-color: var(--secondary);
+  color: var(--secondary);
+  background: var(--secondary-subtle);
+}
+
+.badge--thinking {
+  border-color: var(--primary-border);
+  color: var(--primary);
+  background: var(--primary-subtle);
+}
+
+.badge--fallback {
+  border-color: var(--border-control);
+  color: var(--text-secondary);
+}
+
+.announcements {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+}
+
+.announcement {
+  display: grid;
+  gap: 4px;
+  padding: 12px 16px;
+  border: 1px solid var(--border-subtle);
+  border-left-width: 3px;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  background: var(--bg-raised);
+}
+
+.announcement[aria-current="true"] {
+  color: var(--text-primary);
+}
+
+.announcement--tense {
+  border-left-color: var(--primary);
+}
+
+.announcement--triumphant {
+  border-left-color: var(--success);
+}
+
+.announcement--ominous {
+  border-left-color: var(--danger);
+}
+
+.announcement__hint {
+  color: var(--secondary);
+  font-size: 13px;
+}
+
 .missions {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));

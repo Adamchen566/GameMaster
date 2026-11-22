@@ -51,8 +51,23 @@ erDiagram
         text name
         boolean is_bot
         text token_hash UK "重连令牌的 SHA-256"
+        text agent "random 或 llm，真人为空"
+        text agent_style
     }
+    agent_states {
+        text game_id PK, FK
+        text player_id PK
+        text note "AI 的私人笔记，保密"
+        text last_source "model 或 fallback"
+        text last_fallback_reason
+        timestamptz updated_at
+    }
+    games ||--o{ agent_states : "AI 席位状态"
 ```
+
+`rooms` 另有两列 `gm_mode`（`off` / `template` / `ai`）和 `language`（`zh` / `en`），由迁移 `0002` 加入；`room_players` 多一条约束 `is_bot = (agent IS NOT NULL)`。
+
+迁移 `0001` 在 v0.6 改过一次：CHECK 约束的名字原来被命名规则重复加了前缀（`ck_room_players_ck_room_players_…`），现在用 `op.f()` 固定成 `ck_room_players_…`。这个项目还没有部署过，所以直接改了已发布的迁移；已经用旧版 `0001` 建过的本地库约束照常生效，只是名字是旧的。
 
 ## 2. 每张表负责什么
 

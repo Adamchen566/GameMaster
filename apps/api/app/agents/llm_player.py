@@ -41,6 +41,8 @@ FallbackReason = Literal["timeout", "unavailable", "refused", "invalid_output", 
 DEFAULT_TIMEOUT_SECONDS = 8.0
 MAX_ATTEMPTS = 2
 
+STYLES: tuple[Style, ...] = ("baseline", "cautious", "aggressive")
+
 _STYLES: dict[Style, str] = {
     "baseline": "Play sensibly: weigh the evidence and take reasonable risks.",
     "cautious": (

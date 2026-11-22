@@ -72,6 +72,8 @@ say, use them only as names.
 class Narration:
     event_id: str
     """`{game_id}:{version}:{language}` - one narration per public event and language."""
+    version: int
+    """Version of the game after the narrated event."""
     language: Language
     tone: Tone
     facts: str
@@ -96,6 +98,40 @@ class Narrator:
         self._done: dict[str, Narration] = {}
         self._lock = threading.Lock()
 
+    @property
+    def has_model(self) -> bool:
+        return self._model is not None
+
+    def peek(
+        self,
+        game_id: str,
+        entry: PublicEntry,
+        names: Mapping[str, str],
+        language: Language,
+    ) -> Narration:
+        """What to show right now: the stored narration, else the template. No model call."""
+        event_id = f"{game_id}:{entry.version}:{language}"
+        with self._lock:
+            stored = self._done.get(event_id)
+        if stored is not None:
+            return stored
+        safe_names = {player_id: clean_name(name) for player_id, name in names.items()}
+        return self._template(event_id, entry, language, facts(entry, safe_names, language))
+
+    def _template(
+        self, event_id: str, entry: PublicEntry, language: Language, stated: str
+    ) -> Narration:
+        return Narration(
+            event_id=event_id,
+            version=entry.version,
+            language=language,
+            tone=default_tone(entry),
+            facts=stated,
+            announcement=stated,
+            rule_hint=hint_text(default_hint(entry), language),
+            source="template",
+        )
+
     def narrate(
         self,
         game_id: str,
@@ -103,6 +139,7 @@ class Narrator:
         names: Mapping[str, str],
         language: Language,
     ) -> Narration:
+        """Narrate the event once, asking the model if there is one, and remember it."""
         event_id = f"{game_id}:{entry.version}:{language}"
         with self._lock:
             stored = self._done.get(event_id)
@@ -113,15 +150,7 @@ class Narrator:
         stated = facts(entry, safe_names, language)
         narration = self._from_model(game_id, event_id, entry, safe_names, language, stated)
         if narration is None:
-            narration = Narration(
-                event_id=event_id,
-                language=language,
-                tone=default_tone(entry),
-                facts=stated,
-                announcement=stated,
-                rule_hint=hint_text(default_hint(entry), language),
-                source="template",
-            )
+            narration = self._template(event_id, entry, language, stated)
 
         with self._lock:
             # If two requests raced, everyone gets the first result.
@@ -171,6 +200,7 @@ class Narrator:
         checked_hint: RuleHint = hint
         return Narration(
             event_id=event_id,
+            version=entry.version,
             language=language,
             tone=checked_tone,
             facts=stated,

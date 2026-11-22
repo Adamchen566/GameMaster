@@ -3,36 +3,83 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from app.agents.llm_player import STYLES, LlmPlayer
+from app.agents.model import ModelClient, Pricing, TokenBudget
 from app.api.errors import ApiError
-from app.config import get_settings
-from app.service import GameService, Session
+from app.config import Settings, get_settings
+from app.gm.narrator import Narrator
+from app.service import Executor, GameService, Session
+from app.storage.agent_states import SqlAgentStateStore
 from app.storage.database import Database
 from app.storage.games import SqlGameRepository
 from app.storage.rooms import SqlRoomStore
 
 
-def build_service(database_url: str | None) -> GameService:
+def build_ai(settings: Settings, model: ModelClient | None = None) -> dict[str, Any]:
+    """The AI-related arguments of `GameService`. Empty when no model is configured."""
+    if model is None:
+        if settings.llm_provider != "anthropic":
+            return {}
+        # Imported here so the SDK is only loaded when it is used.
+        from app.agents.anthropic_model import AnthropicModel
+
+        model = AnthropicModel(model=settings.llm_model, effort=settings.llm_effort)
+
+    input_price, output_price = (
+        settings.llm_input_price_per_mtok,
+        settings.llm_output_price_per_mtok,
+    )
+    pricing = (
+        Pricing(input_price, output_price)
+        if input_price is not None and output_price is not None
+        else None
+    )
+    budget = TokenBudget(settings.llm_max_tokens_per_game, pricing)
+    return {
+        "budget": budget,
+        "llm_players": {
+            style: LlmPlayer(
+                model, budget, style=style, timeout_seconds=settings.llm_player_timeout_seconds
+            )
+            for style in STYLES
+        },
+        "narrator": Narrator(model, budget, timeout_seconds=settings.llm_gm_timeout_seconds),
+    }
+
+
+def build_service(
+    database_url: str | None,
+    settings: Settings | None = None,
+    *,
+    model: ModelClient | None = None,
+    executor: Executor | None = None,
+) -> GameService:
     """With a database URL games survive a restart; without one they live in memory."""
+    ai = build_ai(settings or Settings(), model)
     if database_url is None:
-        return GameService()
+        return GameService(executor=executor, **ai)
 
     database = Database.from_url(database_url)
     return GameService(
         SqlGameRepository(database),
         SqlRoomStore(database),
         transaction=database.transaction,
+        agent_states=SqlAgentStateStore(database),
+        executor=executor,
+        **ai,
     )
 
 
 @lru_cache
 def get_service() -> GameService:
     """One service per process, built on first use."""
-    return build_service(get_settings().database_url)
+    settings = get_settings()
+    return build_service(settings.database_url, settings)
 
 
 ServiceDep = Annotated[GameService, Depends(get_service)]

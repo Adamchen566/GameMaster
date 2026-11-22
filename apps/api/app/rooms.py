@@ -21,6 +21,10 @@ class Seat:
     is_bot: bool
     token_hash: str | None = None
     """SHA-256 of the reconnect token. The token itself is never stored."""
+    agent: str | None = None
+    """Who plays a bot seat: "random" (legal random moves) or "llm" (a model). None for humans."""
+    style: str | None = None
+    """Playing style of an "llm" seat."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +34,10 @@ class Room:
     seed: int
     """Chosen by the server; drives the deal and the bots, and is never sent to clients."""
     seats: tuple[Seat, ...]
+    gm: str = "template"
+    """Game master: "off", "template" (fixed sentences) or "ai" (a model adds colour)."""
+    language: str = "zh"
+    """Language of the game master's announcements: "zh" or "en"."""
 
 
 def new_token() -> tuple[str, str]:

@@ -2,7 +2,7 @@
 
 一个用于训练完整软件工程链路的阿瓦隆项目：React/TypeScript 前端、FastAPI 后端、PostgreSQL、确定性规则引擎，以及受限工具调用的 AI 主持和 AI 玩家。当前路线先做官方 5–10 人的单人对 AI 闭环；多人联机和 11–12 人扩展规则暂缓。
 
-当前阶段：v0.4 持久化已实现——一名真人加机器人，在浏览器里打完一局官方 5–10 人阿瓦隆；对局以事件日志存进 PostgreSQL，后端重启后刷新页面能回到同一局。v0.5 上线暂时跳过；正在做 v0.6 AI：AI 玩家和 AI 主持的核心模块已完成，还没有接进对局。
+当前阶段：v0.4 持久化已实现——一名真人加机器人，在浏览器里打完一局官方 5–10 人阿瓦隆；对局以事件日志存进 PostgreSQL，后端重启后刷新页面能回到同一局。v0.5 上线暂时跳过；v0.6 AI 已接进对局：建房时可以把席位交给模型、打开 AI 主持（需要服务器配置模型，见下）；还没有用真实密钥跑过。
 
 ## 从这里开始
 
@@ -39,6 +39,13 @@ cd apps/api
 $env:DATABASE_URL = "sqlite:///./avalon.db"
 .\.venv\Scripts\python.exe -m alembic upgrade head
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
+```
+
+想用 AI 玩家和 AI 主持，启动后端前再设置两个环境变量。**每个 AI 回合都是一次付费的 API 调用**，每局有 token 上限（默认 30 万，`LLM_MAX_TOKENS_PER_GAME`）；全部配置项见 [`docs/architecture.md`](docs/architecture.md) 第 5.1 节。
+
+```powershell
+$env:LLM_PROVIDER = "anthropic"
+$env:ANTHROPIC_API_KEY = "你的密钥"
 ```
 
 先按上面启动后端，再打开 <http://localhost:5173>：输入昵称、选人数、创建对局，就可以和机器人打一局。页面请求 `/api/...`，由 Vite 代理转发到后端；后端不在 `http://127.0.0.1:8000` 时用环境变量 `API_PROXY_TARGET` 指定。

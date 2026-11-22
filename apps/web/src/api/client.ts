@@ -32,6 +32,13 @@ export interface Player {
   seat: number;
   name: string;
   is_bot: boolean;
+  /** Who plays a bot seat: the random bot or a language model. */
+  agent: "random" | "llm" | null;
+  /** The game is waiting for this AI seat right now. */
+  thinking: boolean;
+  /** How this AI seat's latest turn was decided. */
+  last_turn: "model" | "fallback" | null;
+  fallback_reason: FallbackReason | null;
   is_you: boolean;
   is_host: boolean;
   is_leader: boolean;
@@ -40,6 +47,46 @@ export interface Player {
   alignment: Alignment | null;
   /** What your own role lets you know about this player. */
   seen_as: "evil" | "merlin_or_morgana" | null;
+}
+
+export type FallbackReason =
+  | "timeout"
+  | "unavailable"
+  | "refused"
+  | "invalid_output"
+  | "budget_exhausted";
+
+export type AiStyle = "baseline" | "cautious" | "aggressive";
+export type GmMode = "off" | "template" | "ai";
+
+/** One thing the game master said about a public event. */
+export interface Announcement {
+  /** Version of the game after the event; unique and increasing. */
+  version: number;
+  tone: "neutral" | "tense" | "triumphant" | "ominous";
+  /** What happened, stated by the server. Always present and always true. */
+  facts: string;
+  /** Equal to `facts` unless a model added colour. */
+  announcement: string;
+  rule_hint: string;
+  source: "model" | "template";
+}
+
+export interface AiUsage {
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number | null;
+}
+
+export interface RoomOptions {
+  aiSeats: number;
+  aiStyle: AiStyle;
+  gm: GmMode;
+}
+
+export interface ServerConfig {
+  llm_available: boolean;
 }
 
 export interface Mission {
@@ -78,6 +125,9 @@ export interface LegalAction {
 export interface Game {
   game_id: string;
   room_code: string;
+  gm: GmMode;
+  announcements: Announcement[];
+  ai_usage: AiUsage;
   version: number;
   phase: Phase;
   you_id: string;
@@ -165,8 +215,28 @@ function authorization(session: Session): Record<string, string> {
   return { Authorization: `Bearer ${session.token}` };
 }
 
-export function createRoom(nickname: string, playerCount: number): Promise<RoomCreated> {
-  return request<RoomCreated>("/rooms", json({ nickname, player_count: playerCount }));
+const DEFAULT_ROOM_OPTIONS: RoomOptions = { aiSeats: 0, aiStyle: "baseline", gm: "template" };
+
+export function createRoom(
+  nickname: string,
+  playerCount: number,
+  options: RoomOptions = DEFAULT_ROOM_OPTIONS,
+): Promise<RoomCreated> {
+  return request<RoomCreated>(
+    "/rooms",
+    json({
+      nickname,
+      player_count: playerCount,
+      ai_seats: options.aiSeats,
+      ai_style: options.aiStyle,
+      gm: options.gm,
+      language: "zh",
+    }),
+  );
+}
+
+export function getConfig(): Promise<ServerConfig> {
+  return request<ServerConfig>("/config");
 }
 
 export function getGame(session: Session): Promise<Game> {

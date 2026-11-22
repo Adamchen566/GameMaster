@@ -4,6 +4,7 @@ real database; `tests/storage/test_migrations.py` checks the two agree.
     games  1 ── n  game_events      the event-sourced aggregate
     games  1 ── 1  rooms            the application wrapper around one game
     rooms  1 ── n  room_players     seats: names, bots, reconnect token digests
+    games  1 ── n  agent_states     per AI seat: private notes, how its last turn went
 """
 
 from __future__ import annotations
@@ -85,6 +86,8 @@ rooms = Table(
     # Drives the deal and the bots. Secret until the game is over.
     Column("seed", BigInteger, nullable=False),
     Column("created_at", Timestamp, nullable=False),
+    Column("gm_mode", Text, nullable=False, server_default="template"),
+    Column("language", Text, nullable=False, server_default="zh"),
     UniqueConstraint("game_id"),
     Index("ix_rooms_code", "code"),
 )
@@ -99,8 +102,25 @@ room_players = Table(
     Column("is_bot", Boolean, nullable=False),
     # SHA-256 of the reconnect token; the token itself is never stored.
     Column("token_hash", Text),
+    # Who plays a bot seat: "random" or "llm". NULL for humans.
+    Column("agent", Text),
+    Column("agent_style", Text),
     UniqueConstraint("room_id", "player_id"),
     UniqueConstraint("token_hash"),
     CheckConstraint("seat >= 0", name="seat_not_negative"),
     CheckConstraint("is_bot = (token_hash IS NULL)", name="only_humans_have_tokens"),
+    CheckConstraint("is_bot = (agent IS NOT NULL)", name="only_bots_have_agents"),
+)
+
+agent_states = Table(
+    "agent_states",
+    metadata,
+    Column("game_id", Text, ForeignKey("games.id", ondelete="CASCADE"), primary_key=True),
+    Column("player_id", Text, primary_key=True),
+    # The model's private notes to itself. Never sent to any client.
+    Column("note", Text, nullable=False),
+    # How the seat's most recent turn was decided: "model" or "fallback".
+    Column("last_source", Text),
+    Column("last_fallback_reason", Text),
+    Column("updated_at", Timestamp, nullable=False),
 )

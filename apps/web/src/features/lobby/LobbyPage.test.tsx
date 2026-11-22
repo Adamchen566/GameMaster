@@ -9,6 +9,8 @@ function renderLobby(props: Partial<Parameters<typeof LobbyPage>[0]> = {}) {
   return { onCreate };
 }
 
+const DEFAULT_OPTIONS = { aiSeats: 0, aiStyle: "baseline", gm: "template" };
+
 describe("LobbyPage", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => undefined)));
@@ -21,7 +23,7 @@ describe("LobbyPage", () => {
     fireEvent.click(screen.getByLabelText("7 人"));
     fireEvent.click(screen.getByRole("button", { name: "创建对局" }));
 
-    expect(onCreate).toHaveBeenCalledExactlyOnceWith("Adam", 7);
+    expect(onCreate).toHaveBeenCalledExactlyOnceWith("Adam", 7, DEFAULT_OPTIONS);
   });
 
   it("defaults to five players", () => {
@@ -30,7 +32,7 @@ describe("LobbyPage", () => {
     fireEvent.change(screen.getByLabelText("昵称"), { target: { value: "Adam" } });
     fireEvent.click(screen.getByRole("button", { name: "创建对局" }));
 
-    expect(onCreate).toHaveBeenCalledWith("Adam", 5);
+    expect(onCreate).toHaveBeenCalledWith("Adam", 5, DEFAULT_OPTIONS);
   });
 
   it("asks for a nickname instead of submitting an empty one", () => {

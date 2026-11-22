@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { ActionRequest, Game, LegalAction, Mission, Player } from "../../api/client";
 import {
   ALIGNMENT_NAMES,
+  FALLBACK_REASONS,
   PHASE_NAMES,
   ROLE_HINTS,
   ROLE_NAMES,
@@ -65,6 +66,8 @@ export function GamePage(props: GamePageProps) {
         </section>
       )}
 
+      {game.announcements.length > 0 && <Announcements game={game} />}
+
       {game.missions.length > 0 && <MissionTrack game={game} />}
 
       <section className="card" aria-labelledby="players-title">
@@ -122,7 +125,14 @@ function ActionPanel(props: ActionPanelProps) {
     );
   }
   if (legal === undefined) {
-    return <p className="muted">等待其他玩家行动…</p>;
+    const thinking = game.players.filter((player) => player.thinking);
+    return (
+      <p className="muted" role="status">
+        {thinking.length > 0
+          ? `等待 ${thinking.map((player) => player.name).join("、")} 行动…`
+          : "等待其他玩家行动…"}
+      </p>
+    );
   }
 
   switch (legal.type) {
@@ -288,6 +298,35 @@ function Assassinate({
   );
 }
 
+const ANNOUNCEMENTS_SHOWN = 5;
+
+function Announcements({ game }: { game: Game }) {
+  // Newest first; the server sends them oldest first.
+  const latest = game.announcements.slice(-ANNOUNCEMENTS_SHOWN).reverse();
+
+  return (
+    <section className="card" aria-labelledby="gm-title">
+      <h2 id="gm-title">主持人</h2>
+      <ol className="announcements">
+        {latest.map((item, index) => (
+          <li
+            key={item.version}
+            className={`announcement announcement--${item.tone}`}
+            aria-current={index === 0 ? "true" : undefined}
+          >
+            <p>{item.announcement}</p>
+            {/* A model's line is colour; the fact it decorates is always shown too. */}
+            {item.source === "model" && <p className="muted">{item.facts}</p>}
+            {index === 0 && item.rule_hint !== "" && (
+              <p className="announcement__hint">规则提示：{item.rule_hint}</p>
+            )}
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 function MissionTrack({ game }: { game: Game }) {
   const rejected = (game.proposal_number ?? 1) - 1;
 
@@ -345,7 +384,15 @@ function PlayerRow({ player, game }: { player: Player; game: Game }) {
       <span className="player__name">{player.name}</span>
       <span className="player__badges">
         {player.is_you && <span className="badge badge--you">你</span>}
-        {player.is_bot && <span className="badge">机器人</span>}
+        {player.agent === "random" && <span className="badge">机器人</span>}
+        {player.agent === "llm" && <span className="badge badge--ai">AI</span>}
+        {player.thinking && <span className="badge badge--thinking">思考中…</span>}
+        {player.last_turn === "fallback" && (
+          <span className="badge badge--fallback">
+            上一步由机器人代打
+            {player.fallback_reason !== null && `：${FALLBACK_REASONS[player.fallback_reason]}`}
+          </span>
+        )}
         {player.is_leader && game.phase !== "finished" && (
           <span className="badge badge--leader">队长</span>
         )}

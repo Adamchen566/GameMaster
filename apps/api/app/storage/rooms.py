@@ -32,6 +32,8 @@ class SqlRoomStore:
                     code=room.code,
                     seed=room.seed,
                     created_at=self._now(),
+                    gm_mode=room.gm,
+                    language=room.language,
                 )
             )
             connection.execute(
@@ -44,6 +46,8 @@ class SqlRoomStore:
                         "name": seat.name,
                         "is_bot": seat.is_bot,
                         "token_hash": seat.token_hash,
+                        "agent": seat.agent,
+                        "agent_style": seat.style,
                     }
                     for seat_number, seat in enumerate(room.seats)
                 ],
@@ -69,7 +73,9 @@ class SqlRoomStore:
 
     def _room(self, connection: Connection, room_id: str) -> Room:
         room = connection.execute(
-            select(rooms.c.code, rooms.c.game_id, rooms.c.seed).where(rooms.c.id == room_id)
+            select(
+                rooms.c.code, rooms.c.game_id, rooms.c.seed, rooms.c.gm_mode, rooms.c.language
+            ).where(rooms.c.id == room_id)
         ).one()
         seats = connection.execute(
             select(
@@ -77,6 +83,8 @@ class SqlRoomStore:
                 room_players.c.name,
                 room_players.c.is_bot,
                 room_players.c.token_hash,
+                room_players.c.agent,
+                room_players.c.agent_style,
             )
             .where(room_players.c.room_id == room_id)
             .order_by(room_players.c.seat)
@@ -91,7 +99,11 @@ class SqlRoomStore:
                     name=seat.name,
                     is_bot=seat.is_bot,
                     token_hash=seat.token_hash,
+                    agent=seat.agent,
+                    style=seat.agent_style,
                 )
                 for seat in seats
             ),
+            gm=room.gm_mode,
+            language=room.language,
         )

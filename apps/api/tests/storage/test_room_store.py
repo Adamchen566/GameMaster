@@ -24,10 +24,19 @@ def make_room(game_id: str = "game-1", token: str = "token-1") -> Room:
         code="ABC234",
         game_id=game_id,
         seed=2**62 + 12345,  # must fit a 64-bit column without losing digits
+        gm="ai",
+        language="en",
         seats=(
             Seat(player_id="p1", name="Adam", is_bot=False, token_hash=hash_token(token)),
             *(
-                Seat(player_id=f"p{number}", name=f"Bot {number}", is_bot=True)
+                Seat(
+                    player_id=f"p{number}",
+                    name=f"Bot {number}",
+                    is_bot=True,
+                    # One model seat with a style, the rest random bots.
+                    agent="llm" if number == 2 else "random",
+                    style="cautious" if number == 2 else None,
+                )
                 for number in range(2, 6)
             ),
         ),
@@ -115,7 +124,12 @@ def test_player_cannot_exist_without_a_room(database: Database) -> None:
     with pytest.raises(IntegrityError), database.transaction() as connection:
         connection.execute(
             insert(room_players).values(
-                room_id="ghost-room", seat=0, player_id="p1", name="Adam", is_bot=True
+                room_id="ghost-room",
+                seat=0,
+                player_id="p1",
+                name="Adam",
+                is_bot=True,
+                agent="random",
             )
         )
 
@@ -143,11 +157,15 @@ def test_two_seats_cannot_share_a_token(database: Database) -> None:
 @pytest.mark.parametrize(
     "seat",
     [
-        {"is_bot": True, "token_hash": "abc"},  # a bot that could log in
-        {"is_bot": False, "token_hash": None},  # a human who never can
+        {"is_bot": True, "token_hash": "abc", "agent": "random"},  # a bot that could log in
+        {"is_bot": False, "token_hash": None, "agent": None},  # a human who never can
+        {"is_bot": True, "token_hash": None, "agent": None},  # a bot nobody plays
+        {"is_bot": False, "token_hash": "abc", "agent": "llm"},  # a human played by a model
     ],
 )
-def test_only_humans_have_tokens(database: Database, seat: dict[str, object]) -> None:
+def test_seat_is_either_a_human_with_a_token_or_a_bot_with_an_agent(
+    database: Database, seat: dict[str, object]
+) -> None:
     stores = _sql(database)
     store_room(stores, make_room())
     with database.transaction() as connection:

@@ -22,6 +22,7 @@ export type AppAction =
   | { type: "create_failed"; message: string }
   | { type: "room_created"; session: Session; game: Game }
   | { type: "game_loaded"; game: Game }
+  | { type: "game_polled"; game: Game }
   | { type: "session_lost" }
   | { type: "action_started" }
   | { type: "action_failed"; message: string }
@@ -63,6 +64,18 @@ export function gameReducer(state: AppState, action: AppAction): AppState {
         };
       }
       return state;
+
+    case "game_polled":
+      // A background refresh while AI seats play. It must not disturb a request
+      // in flight or an error on screen, and it never moves the game backwards.
+      if (state.screen !== "game" || action.game.version < state.game.version) {
+        return state;
+      }
+      return {
+        ...state,
+        game: action.game,
+        selectedTeam: action.game.version === state.game.version ? state.selectedTeam : [],
+      };
 
     case "action_started":
       return state.screen === "game" ? { ...state, pending: true, error: null } : state;
