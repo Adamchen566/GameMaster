@@ -237,3 +237,45 @@ bot 的随机数由“房间种子、席位、当前版本”派生，所以同�
 | PostgreSQL | 没有 `TEST_DATABASE_URL` 时跳过 | 必须跑（`REQUIRE_POSTGRES_TESTS=1`） | 行锁并发（8 个写入者只成功 1 个）、五条 JSONB 查询 |
 
 Compose 冒烟测试另外在真实的三容器环境里开一局、重启 API 容器，再用同一个令牌取回同一局。
+
+## 5. AI 玩家和 AI 主持
+
+威胁、对策和对应测试在 [`threat-model.md`](threat-model.md)。这一节只说模块怎么分工。目前这些模块还没有接进 `GameService`。
+
+```text
+PlayerView ──build_observation──> 观察(JSON) ──> ModelClient ──> 回答(JSON)
+                                                                    │
+                                              decision_from_data ───┤ 形状不对 → 重试一次
+                                                     to_action ─────┤ 不合法   → 重试一次
+                                                                    v
+                                                    Action（再交给引擎校验）
+任何失败（超时、不可用、拒答、预算用完、两次都错）──> policy_fallback 的随机合法动作
+```
+
+| 模块 | 职责 |
+| --- | --- |
+| `game/public_log.py` | 事件日志的公开投影；丢掉发牌、单人投票牌、单人任务牌 |
+| `agents/contract.py` | 观察怎么构造、回答长什么样、回答怎么变成动作；越权在这里被拒绝 |
+| `agents/model.py` | `ModelClient` 接口（一问一答）、错误类型、每局 token 预算和成本估算 |
+| `agents/llm_player.py` | 一个回合：问模型 → 校验 → 至多重试一次 → 回退 |
+| `agents/anthropic_model.py` | `ModelClient` 的 Claude 实现：结构化输出、超时、错误映射 |
+| `agents/policy_fallback.py` | 随机合法 bot，也是回退的地板 |
+| `gm/templates.py` | 每个公开事件的中英文事实句、默认语气、规则提示文字 |
+| `gm/narrator.py` | AI 主持：事实句永远来自模板，模型只能加语气、一句氛围话和规则提示的键；每个事件只生成一次 |
+
+| 设计决定 | 原因 |
+| --- | --- |
+| 模型只拿 `PlayerView` 和公开日志 | 拿不到的东西就泄露不了，不依赖提示词 |
+| 回答必须能变成 `legal_actions` 里的动作 | 模型和真人走同一条 command path，权限完全相同 |
+| 结构化输出而不是强制 tool calling | 默认模型不支持强制指定工具；结构化输出同样保证得到一个 JSON 对象 |
+| 超时不重试，坏输出重试一次 | 超时再等只会更慢；坏输出告诉模型原因后通常能改对 |
+| 主持的规则提示是键不是文字 | 模型可以选提醒哪条规则，但编不出规则 |
+| SDK 自动重试关闭 | 回合有固定时限，由调用方决定超时后怎么办 |
+
+| 配置项（`AnthropicModel`） | 默认 | 说明 |
+| --- | --- | --- |
+| `model` | `claude-opus-5-5` | 可换成更便宜的型号 |
+| `effort` | `low` | 回合有 8 秒时限，所以取低档；调高会更慢更贵 |
+| `max_tokens` | 4000 | 含模型的思考 |
+| 拒答处理 | 服务端 fallback 开启 | 模型按安全策略拒答时，API 在同一次调用里换备用模型重跑 |
+

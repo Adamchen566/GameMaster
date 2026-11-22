@@ -2,7 +2,7 @@
 
 一个用于训练完整软件工程链路的阿瓦隆项目：React/TypeScript 前端、FastAPI 后端、PostgreSQL、确定性规则引擎，以及受限工具调用的 AI 主持和 AI 玩家。当前路线先做官方 5–10 人的单人对 AI 闭环；多人联机和 11–12 人扩展规则暂缓。
 
-当前阶段：v0.4 持久化已实现——一名真人加机器人，在浏览器里打完一局官方 5–10 人阿瓦隆；对局以事件日志存进 PostgreSQL，后端重启后刷新页面能回到同一局。下一步是 v0.5 上线。
+当前阶段：v0.4 持久化已实现——一名真人加机器人，在浏览器里打完一局官方 5–10 人阿瓦隆；对局以事件日志存进 PostgreSQL，后端重启后刷新页面能回到同一局。v0.5 上线暂时跳过；正在做 v0.6 AI：AI 玩家和 AI 主持的核心模块已完成，还没有接进对局。
 
 ## 从这里开始
 
@@ -66,6 +66,7 @@ cd apps/api
 | [`docs/roadmap.md`](docs/roadmap.md) | 版本顺序、范围、验收标准；顺序和范围以它为准 |
 | [`docs/architecture.md`](docs/architecture.md) | 规则引擎、单人对局后端和前端的模块、状态图、接口、可见性规则 |
 | [`docs/database.md`](docs/database.md) | 表结构、ER 图、事件追加的事务与乐观并发、五条查询 |
+| [`docs/threat-model.md`](docs/threat-model.md) | AI 玩家和 AI 主持的信任边界、威胁、对策和对应测试 |
 | [`docs/superpowers/plans/2026-09-15-avalon-ai-game-master.md`](docs/superpowers/plans/2026-09-15-avalon-ai-game-master.md) | 每个 Task 的详细步骤、接口和 AI 等级 |
 | [`docs/getting-started.md`](docs/getting-started.md) | AI 五等级规则、目录结构、文件职责 |
 | [`docs/learning-log.md`](docs/learning-log.md) | 每个切片的本人复盘 |

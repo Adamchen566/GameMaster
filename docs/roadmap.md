@@ -113,9 +113,9 @@
 
 **验收：** 服务重启后刷新页面能回到同一局；ER 图；回放一致性测试。
 
-### v0.5 上线
+### v0.5 上线（2026-11-22 暂时跳过）
 
-按原 Task 9 执行。
+按原 Task 9 执行。本人决定先跳过上线、继续开发 v0.6；下面的条目保留，回头再做。
 
 - [ ] CI 补齐：Playwright 单浏览器冒烟（1 真人 + bot 一局）、镜像 build。
 - [ ] 两个 Dockerfile：非 root 用户 + healthcheck；前端构建不嵌入服务端密钥。
@@ -130,15 +130,26 @@
 
 合并原 Task 7、Task 10 后半和 Task 11。
 
-- [ ] 威胁模型：秘密泄露、prompt injection、幻觉规则、超时、费用失控。
-- [ ] AI GM：确定性中英文模板先行；结构化输出只允许 `tone / announcement / rule_hint`；3 秒超时或解析失败走模板；同一 `event_id` 不重复生成。
-- [ ] 角色可见信息矩阵（Merlin、Percival、Mordred、Morgana、Oberon、Assassin、普通角色）及测试。
-- [ ] `AgentObservation` / `AgentDecision` 契约；player id 必须来自 `legal_actions`。
-- [ ] LLM 玩家：单动作 tool calling；8 秒超时 + 一次结构化重试；每局 token / cost 上限；失败回退到 v0.3 的 bot。
-- [ ] 记忆只存公开陈述、投票、任务结果和自己的推断，每回合定长摘要。
+分两部分交付。第一部分是不依赖对局接入的核心模块，全部用脚本化的假模型测试；第二部分把它们接进服务和界面。与前几个版本一样由 AI 实现（L4），本人逐文件 review。
+
+**第一部分：核心模块**
+
+- [x] 威胁模型：秘密泄露、prompt injection、幻觉规则、超时、费用失控（[`threat-model.md`](threat-model.md)）。
+- [x] AI GM：确定性中英文模板先行；结构化输出只允许 `tone / announcement / rule_hint`；3 秒超时或解析失败走模板；同一 `event_id` 不重复生成。`rule_hint` 是固定集合里的键，规则文字由模板给出。
+- [x] 角色可见信息矩阵（Merlin、Percival、Mordred、Morgana、Oberon、Assassin、普通角色）及测试，在视图层和发给模型的观察层各一份。
+- [x] `AgentObservation` / `AgentDecision` 契约；player id 必须来自 `legal_actions`。
+- [x] `public_log`：事件日志的公开投影，AI 主持和玩家记忆的唯一来源。
+- [x] LLM 玩家：单动作结构化输出；8 秒超时 + 一次结构化重试；每局 token / cost 上限；失败回退到 v0.3 的 bot。（原计划写的是强制 tool calling；默认模型 Claude Opus 5.5 不支持强制指定工具，改用结构化输出，效果相同。）
+- [x] Claude 适配器（官方 `anthropic` SDK）；只对着假的 SDK 客户端测过，**没有用真实密钥发过请求**。
+- [x] 越权测试：恶意 prompt 要求看全部角色、改票、跳阶段、冒充他人，均拿不到数据或权限。
+
+**第二部分：接入对局**
+
+- [ ] 记忆落库：公开日志（已是定长的最近 30 条）+ 自己的笔记（最多 400 字）目前由调用方传入，还没有保存。
 - [ ] AI 回合改为后台任务，API 请求不等模型；前端轮询 `GET /games/{id}` 显示思考 / 回退状态。
-- [ ] 越权测试：恶意 prompt 要求看全部角色、改票、跳阶段、冒充他人，均拿不到数据或权限。
 - [ ] 房主可选择 bot / LLM 席位和 `baseline / cautious / aggressive` 配置，可关闭 AI GM。
+- [ ] 用真实密钥跑通一局，记录每局成本。
+- [ ] 本人逐文件 review。
 
 **验收：** 1 真人 + 4 LLM 玩家完成一局的 Demo；模型开 / 关对比；超时回退录屏；每局成本记录。
 
