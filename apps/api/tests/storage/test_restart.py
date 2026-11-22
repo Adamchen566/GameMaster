@@ -37,9 +37,9 @@ def test_game_continues_after_the_server_restarts(url: str) -> None:
 
     with running_server(url) as client:
         seat = start_game(_backend(client), player_count=7)
-        for _ in range(4):
-            if seat.game["phase"] == "finished":
-                break
+        # The human votes on every proposal and a game needs three missions, so
+        # no game can be over after two human turns, whatever the server's seed.
+        for _ in range(2):
             take_turn(seat, rng)
         before = seat.game
         game_id, token = seat.game_id, seat.token

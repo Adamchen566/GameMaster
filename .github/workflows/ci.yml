@@ -96,13 +96,13 @@ jobs:
           test "$status" = "ok"
       - name: A game survives an API restart
         run: |
-          room="$(curl --fail --silent --show-error -X POST http://127.0.0.1:5173/api/rooms \n            -H 'Content-Type: application/json' -d '{"nickname":"ci","player_count":5}')"
+          room="$(curl --fail --silent --show-error -X POST http://127.0.0.1:5173/api/rooms -H 'Content-Type: application/json' -d '{"nickname":"ci","player_count":5}')"
           game_id="$(jq -r .game_id <<<"$room")"
           token="$(jq -r .token <<<"$room")"
-          curl --fail --silent --show-error -X POST "http://127.0.0.1:5173/api/games/$game_id/actions" \n            -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \n            -d '{"type":"start_game"}' > before.json
+          curl --fail --silent --show-error -X POST "http://127.0.0.1:5173/api/games/$game_id/actions" -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{"type":"start_game"}' > before.json
           docker compose restart api
           docker compose up --detach --wait --wait-timeout 120
-          curl --fail --silent --show-error "http://127.0.0.1:5173/api/games/$game_id" \n            -H "Authorization: Bearer $token" > after.json
+          curl --fail --silent --show-error "http://127.0.0.1:5173/api/games/$game_id" -H "Authorization: Bearer $token" > after.json
           test "$(jq -r .phase after.json)" != "lobby"
           diff <(jq -S . before.json) <(jq -S . after.json)
       - name: Show logs on failure
